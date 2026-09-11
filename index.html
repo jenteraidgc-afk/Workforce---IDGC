@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Workforce Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; background: #f1f5f9; }
+  .sidebar-item.active { background: #2563eb; color: white; }
+  .sidebar-item:hover:not(.active) { background: #1e293b; }
+  .period-btn.active { background: #2563eb; color: white; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex min-h-screen">
+  <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col fixed h-screen">
+    <div class="p-5 border-b border-slate-800">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">WF</div>
+        <div>
+          <div class="text-white font-semibold text-sm">WORKFORCE</div>
+          <div class="text-slate-500 text-xs">MONITORING</div>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 text-sm overflow-y-auto">
+      <a href="#" data-page="overview" class="sidebar-item active flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📊</span><span>Overview</span></a>
+      <a href="#" data-page="kpi" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📈</span><span>KPI Report</span></a>
+      <a href="#" data-page="markdowns" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🎯</span><span>Markdowns</span></a>
+      <a href="#" data-page="teams" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>👥</span><span>Team Management</span></a>
+      <a href="#" data-page="agents" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🧑‍💼</span><span>Agents / CSRs</span></a>
+      <a href="#" data-page="attendance" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📅</span><span>Attendance</span></a>
+      <a href="#" data-page="daf" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📋</span><span>DAF Tracker</span></a>
+      <a href="#" data-page="appointments" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🗓️</span><span>Appointments</span></a>
+      <a href="#" data-page="users" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>⚙️</span><span>Users</span></a>
+    </nav>
+    <div class="p-4 border-t border-slate-800 text-xs">
+      <div class="text-slate-400 truncate">jentera.idgc@gmail.com</div>
+    </div>
+  </aside>
+
+  <main class="flex-1 ml-64 p-8">
+    <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900" id="pageTitle">Dashboard Overview</h1>
+        <p class="text-slate-500 text-sm" id="lastSync">Loading...</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex bg-white rounded-lg border border-slate-300 p-1">
+          <button data-mode="month" class="period-btn active px-4 py-1.5 text-sm font-medium rounded-md transition">Month</button>
+          <button data-mode="quarter" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Quarter</button>
+          <button data-mode="year" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Year</button>
+        </div>
+        <select id="periodSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
+        </select>
+      </div>
+    </div>
+
+    <div id="content">
+      <div class="text-center py-20 text-slate-400">Loading...</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
+const EMAIL = 'jentera.idgc@gmail.com';
+
+// Hardcoded periods — reliable, no API call needed
+const PERIODS = {
+  month: [
+    'September 2026', 'August 2026', 'July 2026', 'June 2026',
+    'May 2026', 'April 2026', 'March 2026', 'February 2026', 'January 2026',
+    'December 2025', 'November 2025', 'October 2025', 'September 2025',
+    'August 2025', 'July 2025'
+  ],
+  quarter: ['Q3 2026', 'Q2 2026', 'Q1 2026', 'Q4 2025', 'Q3 2025'],
+  year: ['2026', '2025']
+};
+
+let currentPage = 'overview';
+let periodMode = 'month';
+let currentPeriod = 'September 2026';
+const clientCache = {};
+
+async function api(action, extra = {}) {
+  const key = action + '|' + currentPeriod + '|' + JSON.stringify(extra);
+  const hit = clientCache[key];
+  if (hit && (Date.now() - hit.ts) < 300000) return hit.data;
+
+  const params = new URLSearchParams({
+    action, email: EMAIL, period: currentPeriod, ...extra
+  });
+  const res = await fetch(`${API}?${params}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  clientCache[key] = { data: json.data, ts: Date.now() };
+  return json.data;
+}
+
+function populatePeriodSelect() {
+  const sel = document.getElementById('periodSelect');
+  const list = PERIODS[periodMode];
+  sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (list.includes(currentPeriod)) {
+    sel.value = currentPeriod;
+  } else {
+    currentPeriod = list[0];
+    sel.value = currentPeriod;
+  }
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
+function round(n) { return Math.round(Number(n || 0) * 100) / 100; }
+function badge(v, good, warn) {
+  const color = v >= good ? 'text-green-600' : v >= warn ? 'text-amber-600' : 'text-red-600';
+  return `<span class="${color} font-semibold">${round(v)}</span>`;
+}
+
+// ============ PAGE RENDERERS ============
+async function renderOverview() {
+  const [overview, markdowns] = await Promise.all([
+    api('overview'),
+    api('markdowns', { scope: 'all' }).catch(() => [])
+  ]);
+
+  const performers = overview.performers || [];
+  const lowPerformers = [...performers].sort((a,b) => a.qa - b.qa).slice(0, 5);
+
+  document.getElementById('content').innerHTML = `
+    <div class="grid grid-cols-4 gap-5 mb-8">
+      <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
+        <div class="text-blue-100 text-xs font-medium mb-1">HEADCOUNT</div>
+        <div class="text-3xl font-bold">${overview.headcount || 0}</div>
+        <div class="text-blue-100 text-xs mt-1">Active CSRs</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE</div>
+        <div class="text-3xl font-bold text-slate-900">${round(overview.avgQA)}%</div>
+        <div class="text-slate-400 text-xs mt-1">Across all agents</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="text-slate-500 text-xs font-medium mb-1">AVG KPI</div>
+        <div class="text-3xl font-bold text-slate-900">${round(overview.avgKPI)}</div>
+        <div class="text-slate-400 text-xs mt-1">Out of 100</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="text-slate-500 text-xs font-medium mb-1">PERIOD</div>
+        <div class="text-base font-bold text-slate-900 mt-1 truncate">${esc(overview.period || currentPeriod)}</div>
+        <div class="text-slate-400 text-xs mt-1 capitalize">${periodMode}</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-5 mb-8">
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-green-500"></span><h3 class="font-semibold text-slate-900">Top Performers</h3></div>
+        <div class="space-y-3">
+          ${performers.slice(0, 5).map((p, i) => `
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="text-slate-400 text-sm font-medium w-4">${i+1}</span>
+                <div class="min-w-0">
+                  <div class="text-sm font-medium text-slate-800 truncate">${esc(p.name)}</div>
+                  <div class="text-xs text-slate-400 truncate">${esc(p.team || '')}</div>
+                </div>
+              </div>
+              <div class="text-green-600 font-semibold text-sm">${round(p.qa)}%</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-red-500"></span><h3 class="font-semibold text-slate-900">Needs Coaching</h3></div>
+        <div class="space-y-3">
+          ${lowPerformers.map((p, i) => `
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="text-slate-400 text-sm font-medium w-4">${i+1}</span>
+                <div class="min-w-0">
+                  <div class="text-sm font-medium text-slate-800 truncate">${esc(p.name)}</div>
+                  <div class="text-xs text-slate-400 truncate">${esc(p.team || '')}</div>
+                </div>
+              </div>
+              <div class="text-red-600 font-semibold text-sm">${round(p.qa)}%</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-blue-500"></span><h3 class="font-semibold text-slate-900">Top Markdowns</h3></div>
+        <div class="space-y-2">
+          ${markdowns.slice(0, 5).map((m, i) => `
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-slate-400 text-xs font-medium w-4">${i+1}</span>
+                <div class="text-xs font-medium text-slate-800 truncate">${esc(m.criterion)}</div>
+              </div>
+              <div class="text-slate-700 font-semibold text-xs whitespace-nowrap">${m.failures}</div>
+            </div>
+          `).join('') || '<div class="text-slate-400 text-sm">No data</div>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-slate-900">📈 QA Score Distribution</h3>
+        <span class="text-xs text-slate-400">${overview.headcount || 0} agents</span>
+      </div>
+      <div class="h-64"><canvas id="distChart"></canvas></div>
+    </div>
+  `;
+
+  const all = overview.performers || [];
+  const buckets = { '90-100': 0, '80-89': 0, '70-79': 0, '60-69': 0, '<60': 0 };
+  all.forEach(p => {
+    const q = p.qa;
+    if (q >= 90) buckets['90-100']++;
+    else if (q >= 80) buckets['80-89']++;
+    else if (q >= 70) buckets['70-79']++;
+    else if (q >= 60) buckets['60-69']++;
+    else buckets['<60']++;
+  });
+  new Chart(document.getElementById('distChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(buckets),
+      datasets: [{ label: 'Agents', data: Object.values(buckets), backgroundColor: ['#16a34a', '#22c55e', '#f59e0b', '#ef4444', '#991b1b'], borderRadius: 6 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+}
+
+async function renderKPI() {
+  const rows = await api('kpi');
+  document.getElementById('content').innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">#</th>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Agent</th>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Team</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">QA</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">Att</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">AHT</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">Assess</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">KPI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.sort((a,b) => b.kpi - a.kpi).map((r, i) => `
+            <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <td class="px-4 py-2 text-slate-400">${i+1}</td>
+              <td class="px-4 py-2 font-medium text-slate-800">${esc(r.name)}</td>
+              <td class="px-4 py-2 text-slate-500 text-xs">${esc(r.team || '')}</td>
+              <td class="px-4 py-2 text-right">${badge(r.qa, 90, 80)}</td>
+              <td class="px-4 py-2 text-right text-slate-600">${r.attComponent}</td>
+              <td class="px-4 py-2 text-right text-slate-600">${r.ahtComponent}</td>
+              <td class="px-4 py-2 text-right text-slate-600">${r.assessComponent}</td>
+              <td class="px-4 py-2 text-right font-bold text-blue-600">${round(r.kpi)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function renderMarkdowns() {
+  const rows = await api('markdowns', { scope: 'all' });
+  document.getElementById('content').innerHTML = `
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h3 class="font-semibold text-slate-900 mb-4">🎯 Where agents lose points — ${esc(currentPeriod)}</h3>
+      <div class="space-y-3">
+        ${rows.map(r => {
+          const max = rows[0].failures || 1;
+          const pct = (r.failures / max) * 100;
+          return `
+            <div>
+              <div class="flex justify-between text-sm mb-1 gap-4">
+                <span class="text-slate-700 font-medium">${esc(r.criterion)}</span>
+                <span class="text-slate-500 whitespace-nowrap">${r.failures} failures</span>
+              </div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-red-500 rounded-full" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function renderTeams() {
+  const teams = await api('teams');
+  document.getElementById('content').innerHTML = `
+    <div class="grid grid-cols-2 gap-5">
+      ${teams.map(t => `
+        <div class="bg-white rounded-xl p-5 shadow-sm">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
+              ${t.teamLeader.split(' ')[0].charAt(0)}
+            </div>
+            <div>
+              <div class="font-semibold text-slate-900">${esc(t.teamLeader)}</div>
+              <div class="text-xs text-slate-500">Team Leader · ${t.agents.length} agents</div>
+            </div>
+          </div>
+          <div class="space-y-1">
+            ${t.agents.slice(0, 6).map(a => `<div class="text-sm text-slate-600">• ${esc(a)}</div>`).join('')}
+            ${t.agents.length > 6 ? `<div class="text-xs text-slate-400 mt-1">+ ${t.agents.length - 6} more</div>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function renderAgents() {
+  const agents = await api('agents');
+  document.getElementById('content').innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Agent</th>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Team</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">Audits</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">Avg Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${agents.sort((a,b) => b.avgScore - a.avgScore).map(a => `
+            <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <td class="px-4 py-2 font-medium text-slate-800">${esc(a.name)}</td>
+              <td class="px-4 py-2 text-slate-500 text-xs">${esc(a.team || '')}</td>
+              <td class="px-4 py-2 text-right text-slate-600">${a.audits}</td>
+              <td class="px-4 py-2 text-right">${badge(a.avgScore, 90, 80)}%</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+const renderers = {
+  overview: renderOverview,
+  kpi: renderKPI,
+  markdowns: renderMarkdowns,
+  teams: renderTeams,
+  agents: renderAgents,
+  attendance: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
+  daf: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
+  appointments: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
+  users: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
+};
+
+async function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  document.getElementById('pageTitle').textContent =
+    { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' }[page] || page;
+
+  document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
+  try {
+    await renderers[page]();
+    document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod}`;
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+// ============ EVENT BINDINGS ============
+document.querySelectorAll('.sidebar-item').forEach(el => {
+  el.addEventListener('click', (e) => { e.preventDefault(); navigate(el.dataset.page); });
+});
+
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    periodMode = btn.dataset.mode;
+    document.querySelectorAll('.period-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === periodMode);
+      b.classList.toggle('text-slate-600', b.dataset.mode !== periodMode);
+    });
+    populatePeriodSelect();
+    navigate(currentPage);
+  });
+});
+
+document.getElementById('periodSelect').addEventListener('change', (e) => {
+  currentPeriod = e.target.value;
+  navigate(currentPage);
+});
+
+// ============ BOOT ============
+populatePeriodSelect();
+navigate('overview');
+</script>
+
+</body>
+</html>
