@@ -328,29 +328,98 @@ async function renderOverview() {
     </div>
     <div class="bg-white rounded-xl p-5 shadow-sm">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-slate-900">📈 QA Score Distribution</h3>
-        <span class="text-xs text-slate-400">${overview.headcount || 0} agents</span>
+        <h3 class="font-semibold text-slate-900">📈 Performance Trends (Jan - Sep 2026)</h3>
+        <span class="text-xs text-slate-400">Top 5 vs Bottom 5</span>
       </div>
-      <div class="h-64"><canvas id="distChart"></canvas></div>
+      <div class="h-80"><canvas id="trendChart"></canvas></div>
     </div>
   `;
-  const all = overview.performers || [];
-  const buckets = { '90-100': 0, '80-89': 0, '70-79': 0, '60-69': 0, '<60': 0 };
-  all.forEach(p => {
-    const q = p.qa;
-    if (q >= 90) buckets['90-100']++;
-    else if (q >= 80) buckets['80-89']++;
-    else if (q >= 70) buckets['70-79']++;
-    else if (q >= 60) buckets['60-69']++;
-    else buckets['<60']++;
-  });
-  new Chart(document.getElementById('distChart'), {
-    type: 'bar',
-    data: {
-      labels: Object.keys(buckets),
-      datasets: [{ label: 'Agents', data: Object.values(buckets), backgroundColor: ['#16a34a', '#22c55e', '#f59e0b', '#ef4444', '#991b1b'], borderRadius: 6 }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+
+  // Fetch trend data and render chart
+  api('qaTrends').then(trends => {
+    const datasets = [];
+
+    // Top 5 performers - green shades
+    const greenColors = ['#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
+    trends.top5.forEach((agent, i) => {
+      datasets.push({
+        label: agent.name,
+        data: agent.data,
+        borderColor: greenColors[i],
+        backgroundColor: greenColors[i],
+        borderWidth: 2,
+        tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 5
+      });
+    });
+
+    // Bottom 5 performers - red shades
+    const redColors = ['#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5'];
+    trends.bottom5.forEach((agent, i) => {
+      datasets.push({
+        label: agent.name,
+        data: agent.data,
+        borderColor: redColors[i],
+        backgroundColor: redColors[i],
+        borderWidth: 2,
+        tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        borderDash: [5, 5]
+      });
+    });
+
+    new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: {
+        labels: trends.months,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              usePointStyle: true,
+              padding: 10,
+              font: { size: 10 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.dataset.label}: ${round(context.parsed.y)}%`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            min: 60,
+            max: 100,
+            title: {
+              display: true,
+              text: 'QA Score (%)'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: 'Month'
+            }
+          }
+        }
+      }
+    });
+  }).catch(err => {
+    console.error('Failed to load trends:', err);
   });
 }
 
