@@ -14,7 +14,6 @@
 </style>
 </head>
 <body class="min-h-screen">
-
 <div class="flex min-h-screen">
   <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col fixed h-screen">
     <div class="p-5 border-b border-slate-800">
@@ -39,9 +38,9 @@
     </nav>
     <div class="p-4 border-t border-slate-800 text-xs">
       <div class="text-slate-400 truncate">jentera.idgc@gmail.com</div>
+      <div class="text-slate-500 text-[10px] mt-1" id="cacheStatus">Cache: empty</div>
     </div>
   </aside>
-
   <main class="flex-1 ml-64 p-8">
     <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
       <div>
@@ -56,18 +55,19 @@
         </div>
         <select id="periodSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
         </select>
+        <button id="clearCacheBtn" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium hover:bg-slate-50 transition" title="Clear cache">🔄</button>
       </div>
     </div>
-
     <div id="content">
       <div class="text-center py-20 text-slate-400">Loading...</div>
     </div>
   </main>
 </div>
-
 <script>
+// ============ CONFIG ============
 const API = 'https://script.google.com/macros/s/AKfycbxEAdehTEJjtJdZEVYNHCkCF8I_GeXgBLRJ2cuDIlcjufg9_jhflZkdq6ed0Q308L1K/exec';
 const EMAIL = 'jentera.idgc@gmail.com';
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 // Hardcoded periods — reliable, no API call needed
 const PERIODS = {
@@ -84,23 +84,146 @@ const PERIODS = {
 let currentPage = 'overview';
 let periodMode = 'month';
 let currentPeriod = 'September 2026';
-const clientCache = {};
 
-async function api(action, extra = {}) {
-  const key = action + '|' + currentPeriod + '|' + JSON.stringify(extra);
-  const hit = clientCache[key];
-  if (hit && (Date.now() - hit.ts) < 300000) return hit.data;
+// ============ ENHANCED CLIENT-SIDE CACHE ============
+class SmartCache {
+  constructor() {
+    this.cache = new Map();
+    this.hits = 0;
+    this.misses = 0;
+    this.loadFromLocalStorage();
+  }
 
-  const params = new URLSearchParams({
-    action, email: EMAIL, period: currentPeriod, ...extra
-  });
-  const res = await fetch(`${API}?${params}`);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
-  clientCache[key] = { data: json.data, ts: Date.now() };
-  return json.data;
+  _getCacheKey(action, period, extra) {
+    return `${action}|${period}|${JSON.stringify(extra || {})}`;
+  }
+
+  get(action, period, extra = {}) {
+    const key = this._getCacheKey(action, period, extra);
+    const entry = this.cache.get(key);
+
+    if (!entry) {
+      this.misses++;
+      this.updateStatus();
+      return null;
+    }
+
+    const age = Date.now() - entry.timestamp;
+    if (age > CACHE_TTL) {
+      this.cache.delete(key);
+      this.misses++;
+      this.updateStatus();
+      return null;
+    }
+
+    this.hits++;
+    this.updateStatus();
+    return entry.data;
+  }
+
+  set(action, period, extra = {}, data) {
+    const key = this._getCacheKey(action, period, extra);
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+    this.saveToLocalStorage();
+    this.updateStatus();
+  }
+
+  clear() {
+    this.cache.clear();
+    this.hits = 0;
+    this.misses = 0;
+    localStorage.removeItem('wf_cache');
+    this.updateStatus();
+  }
+
+  saveToLocalStorage() {
+    try {
+      const data = Array.from(this.cache.entries()).map(([key, value]) => [key, value]);
+      localStorage.setItem('wf_cache', JSON.stringify(data));
+    } catch (e) {
+      console.warn('Failed to save cache to localStorage:', e);
+    }
+  }
+
+  loadFromLocalStorage() {
+    try {
+      const stored = localStorage.getItem('wf_cache');
+      if (stored) {
+        const data = JSON.parse(stored);
+        // Filter out expired entries
+        const now = Date.now();
+        data.forEach(([key, value]) => {
+          if (now - value.timestamp < CACHE_TTL) {
+            this.cache.set(key, value);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to load cache from localStorage:', e);
+    }
+  }
+
+  updateStatus() {
+    const total = this.hits + this.misses;
+    const hitRate = total > 0 ? Math.round((this.hits / total) * 100) : 0;
+    const size = this.cache.size;
+    const statusEl = document.getElementById('cacheStatus');
+    if (statusEl) {
+      statusEl.textContent = `Cache: ${size} entries, ${hitRate}% hit rate`;
+      statusEl.title = `${this.hits} hits, ${this.misses} misses`;
+    }
+  }
+
+  getStats() {
+    return {
+      size: this.cache.size,
+      hits: this.hits,
+      misses: this.misses,
+      hitRate: this.hits + this.misses > 0 ? (this.hits / (this.hits + this.misses)) * 100 : 0
+    };
+  }
 }
 
+const clientCache = new SmartCache();
+
+// ============ API FUNCTION WITH ENHANCED CACHING ============
+async function api(action, extra = {}) {
+  // Check cache first
+  const cached = clientCache.get(action, currentPeriod, extra);
+  if (cached !== null) {
+    return cached;
+  }
+
+  // Cache miss - fetch from API
+  const params = new URLSearchParams({
+    action,
+    email: EMAIL,
+    period: currentPeriod,
+    ...extra
+  });
+
+  try {
+    const res = await fetch(`${API}?${params}`);
+    const json = await res.json();
+
+    if (!json.ok) {
+      throw new Error(json.error || 'API error');
+    }
+
+    // Store in cache
+    clientCache.set(action, currentPeriod, extra, json.data);
+
+    return json.data;
+  } catch (error) {
+    console.error('API call failed:', error);
+    throw error;
+  }
+}
+
+// ============ PERIOD MANAGEMENT ============
 function populatePeriodSelect() {
   const sel = document.getElementById('periodSelect');
   const list = PERIODS[periodMode];
@@ -113,6 +236,7 @@ function populatePeriodSelect() {
   }
 }
 
+// ============ UTILITIES ============
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
 function round(n) { return Math.round(Number(n || 0) * 100) / 100; }
 function badge(v, good, warn) {
@@ -126,10 +250,8 @@ async function renderOverview() {
     api('overview'),
     api('markdowns', { scope: 'all' }).catch(() => [])
   ]);
-
   const performers = overview.performers || [];
   const lowPerformers = [...performers].sort((a,b) => a.qa - b.qa).slice(0, 5);
-
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-4 gap-5 mb-8">
       <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
@@ -153,7 +275,6 @@ async function renderOverview() {
         <div class="text-slate-400 text-xs mt-1 capitalize">${periodMode}</div>
       </div>
     </div>
-
     <div class="grid grid-cols-3 gap-5 mb-8">
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-green-500"></span><h3 class="font-semibold text-slate-900">Top Performers</h3></div>
@@ -172,7 +293,6 @@ async function renderOverview() {
           `).join('')}
         </div>
       </div>
-
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-red-500"></span><h3 class="font-semibold text-slate-900">Needs Coaching</h3></div>
         <div class="space-y-3">
@@ -190,7 +310,6 @@ async function renderOverview() {
           `).join('')}
         </div>
       </div>
-
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-blue-500"></span><h3 class="font-semibold text-slate-900">Top Markdowns</h3></div>
         <div class="space-y-2">
@@ -206,7 +325,6 @@ async function renderOverview() {
         </div>
       </div>
     </div>
-
     <div class="bg-white rounded-xl p-5 shadow-sm">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-semibold text-slate-900">📈 QA Score Distribution</h3>
@@ -215,7 +333,6 @@ async function renderOverview() {
       <div class="h-64"><canvas id="distChart"></canvas></div>
     </div>
   `;
-
   const all = overview.performers || [];
   const buckets = { '90-100': 0, '80-89': 0, '70-79': 0, '60-69': 0, '<60': 0 };
   all.forEach(p => {
@@ -368,11 +485,11 @@ async function navigate(page) {
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   document.getElementById('pageTitle').textContent =
     { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' }[page] || page;
-
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     await renderers[page]();
-    document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod}`;
+    const stats = clientCache.getStats();
+    document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
   } catch (e) {
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
   }
@@ -400,10 +517,14 @@ document.getElementById('periodSelect').addEventListener('change', (e) => {
   navigate(currentPage);
 });
 
+document.getElementById('clearCacheBtn').addEventListener('click', () => {
+  clientCache.clear();
+  navigate(currentPage);
+});
+
 // ============ BOOT ============
 populatePeriodSelect();
 navigate('overview');
 </script>
-
 </body>
 </html>
