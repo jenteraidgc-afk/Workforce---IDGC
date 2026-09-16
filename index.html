@@ -68,45 +68,31 @@
 </div>
 
 <script>
-// ============ CONFIG ============
 const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
 const EMAIL = 'jentera.idgc@gmail.com';
-const CACHE_TTL = 5 * 60 * 1000; // 5 min
+const CACHE_TTL = 5 * 60 * 1000;
 
 let currentPage = 'overview';
 let periodMode = 'year';
 let currentPeriod = '2026';
 let PERIODS = { month: [], quarter: [], year: [] };
 
-// ============ CACHE ============
 class SmartCache {
-  constructor() {
-    this.cache = new Map();
-    this.hits = 0; this.misses = 0;
-    this.loadFromLocalStorage();
-  }
+  constructor() { this.cache = new Map(); this.hits = 0; this.misses = 0; this.loadFromLocalStorage(); }
   _key(a, p, e) { return `${a}|${p}|${JSON.stringify(e || {})}`; }
   get(a, p, e = {}) {
     const k = this._key(a, p, e);
     const hit = this.cache.get(k);
     if (!hit) { this.misses++; this.updateStatus(); return null; }
-    if (Date.now() - hit.timestamp > CACHE_TTL) {
-      this.cache.delete(k); this.misses++; this.updateStatus(); return null;
-    }
-    this.hits++; this.updateStatus();
-    return hit.data;
+    if (Date.now() - hit.timestamp > CACHE_TTL) { this.cache.delete(k); this.misses++; this.updateStatus(); return null; }
+    this.hits++; this.updateStatus(); return hit.data;
   }
   set(a, p, e = {}, data) {
     this.cache.set(this._key(a, p, e), { data, timestamp: Date.now() });
     this.saveToLocalStorage(); this.updateStatus();
   }
-  clear() {
-    this.cache.clear(); this.hits = 0; this.misses = 0;
-    localStorage.removeItem('wf_cache'); this.updateStatus();
-  }
-  saveToLocalStorage() {
-    try { localStorage.setItem('wf_cache', JSON.stringify([...this.cache.entries()])); } catch (e) {}
-  }
+  clear() { this.cache.clear(); this.hits = 0; this.misses = 0; localStorage.removeItem('wf_cache'); this.updateStatus(); }
+  saveToLocalStorage() { try { localStorage.setItem('wf_cache', JSON.stringify([...this.cache.entries()])); } catch (e) {} }
   loadFromLocalStorage() {
     try {
       const raw = localStorage.getItem('wf_cache');
@@ -122,18 +108,13 @@ class SmartCache {
     const el = document.getElementById('cacheStatus');
     if (el) el.textContent = `Cache: ${this.cache.size} entries, ${rate}% hit rate`;
   }
-  getStats() {
-    const t = this.hits + this.misses;
-    return { size: this.cache.size, hitRate: t ? (this.hits / t) * 100 : 0 };
-  }
+  getStats() { const t = this.hits + this.misses; return { size: this.cache.size, hitRate: t ? (this.hits / t) * 100 : 0 }; }
 }
 const clientCache = new SmartCache();
 
-// ============ API ============
 async function api(action, extra = {}) {
   const hit = clientCache.get(action, currentPeriod, extra);
   if (hit !== null) return hit;
-
   const params = new URLSearchParams({ action, email: EMAIL, period: currentPeriod, ...extra });
   const res = await fetch(`${API}?${params}`);
   const json = await res.json();
@@ -142,7 +123,6 @@ async function api(action, extra = {}) {
   return json.data;
 }
 
-// ============ PERIODS ============
 async function loadPeriods() {
   const params = new URLSearchParams({ action: 'periods', email: EMAIL });
   const res = await fetch(`${API}?${params}`);
@@ -154,10 +134,7 @@ async function loadPeriods() {
 function populatePeriodSelect() {
   const sel = document.getElementById('periodSelect');
   const list = PERIODS[periodMode] || [];
-  if (!list.length) {
-    sel.innerHTML = '<option value="">No data</option>';
-    return;
-  }
+  if (!list.length) { sel.innerHTML = '<option value="">No data</option>'; return; }
   sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
   if (list.includes(currentPeriod)) {
     sel.value = currentPeriod;
@@ -167,7 +144,6 @@ function populatePeriodSelect() {
   }
 }
 
-// ============ UTILITIES ============
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
 function round(n) { return Math.round(Number(n || 0) * 100) / 100; }
 function badge(v, good, warn) {
@@ -175,9 +151,7 @@ function badge(v, good, warn) {
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
-// ============ OVERVIEW ============
 async function renderOverview() {
-  // Overview always shows YTD for the current year, regardless of month/quarter selection
   const data = await api('overviewFull', { period: currentPeriod });
 
   document.getElementById('content').innerHTML = `
@@ -204,69 +178,15 @@ async function renderOverview() {
       </div>
     </div>
 
-    <div class="grid grid-cols-3 gap-5 mb-8">
-      <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-green-500"></span><h3 class="font-semibold text-slate-900">Top Performers</h3></div>
-        <div class="space-y-3">
-          ${(data.performers || []).slice(0, 5).map((p, i) => `
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="text-slate-400 text-sm font-medium w-4">${i + 1}</span>
-                <div class="min-w-0">
-                  <div class="text-sm font-medium text-slate-800 truncate">${esc(p.name)}</div>
-                  <div class="text-xs text-slate-400 truncate">${esc(p.team || '')}</div>
-                </div>
-              </div>
-              <div class="text-green-600 font-semibold text-sm">${round(p.kpi)}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-red-500"></span><h3 class="font-semibold text-slate-900">Needs Coaching</h3></div>
-        <div class="space-y-3">
-          ${(data.lowPerformers || []).slice(0, 5).map((p, i) => `
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="text-slate-400 text-sm font-medium w-4">${i + 1}</span>
-                <div class="min-w-0">
-                  <div class="text-sm font-medium text-slate-800 truncate">${esc(p.name)}</div>
-                  <div class="text-xs text-slate-400 truncate">${esc(p.team || '')}</div>
-                </div>
-              </div>
-              <div class="text-red-600 font-semibold text-sm">${round(p.kpi)}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-blue-500"></span><h3 class="font-semibold text-slate-900">Top Markdowns</h3></div>
-        <div class="space-y-2">
-          ${(data.markdowns || []).map((m, i) => `
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="text-slate-400 text-xs font-medium w-4">${i + 1}</span>
-                <div class="text-xs font-medium text-slate-800 truncate">${esc(m.criterion)}</div>
-              </div>
-              <div class="text-slate-700 font-semibold text-xs whitespace-nowrap">${m.failures}</div>
-            </div>
-          `).join('') || '<div class="text-slate-400 text-xs">No data</div>'}
-        </div>
-      </div>
-    </div>
-
     <div class="bg-white rounded-xl p-5 shadow-sm">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-semibold text-slate-900">📈 Team Average QA — Monthly Trend</h3>
         <span class="text-xs text-slate-400">All active agents</span>
       </div>
-      <div class="h-80"><canvas id="trendChart"></canvas></div>
+      <div class="h-96"><canvas id="trendChart"></canvas></div>
     </div>
   `;
 
-  // Render single-line trend
   const trend = data.trend || { months: [], avgQA: [] };
   new Chart(document.getElementById('trendChart'), {
     type: 'line',
@@ -286,8 +206,7 @@ async function renderOverview() {
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (ctx) => `Avg QA: ${round(ctx.parsed.y)}%` } }
@@ -300,7 +219,6 @@ async function renderOverview() {
   });
 }
 
-// ============ KPI REPORT ============
 async function renderKPI() {
   const rows = await api('kpi');
   document.getElementById('content').innerHTML = `
@@ -337,7 +255,6 @@ async function renderKPI() {
   `;
 }
 
-// ============ MARKDOWNS ============
 async function renderMarkdowns() {
   const rows = await api('markdowns', { scope: 'all' });
   document.getElementById('content').innerHTML = `
@@ -364,7 +281,6 @@ async function renderMarkdowns() {
   `;
 }
 
-// ============ TEAMS ============
 async function renderTeams() {
   const teams = await api('teams');
   document.getElementById('content').innerHTML = `
@@ -390,7 +306,6 @@ async function renderTeams() {
   `;
 }
 
-// ============ AGENTS ============
 async function renderAgents() {
   const agents = await api('agents');
   document.getElementById('content').innerHTML = `
@@ -419,30 +334,21 @@ async function renderAgents() {
   `;
 }
 
-// ============ PLACEHOLDERS ============
 const comingSoon = async () => {
   document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>';
 };
 
 const renderers = {
-  overview: renderOverview,
-  kpi: renderKPI,
-  markdowns: renderMarkdowns,
-  teams: renderTeams,
-  agents: renderAgents,
-  attendance: comingSoon,
-  daf: comingSoon,
-  appointments: comingSoon,
-  users: comingSoon,
+  overview: renderOverview, kpi: renderKPI, markdowns: renderMarkdowns,
+  teams: renderTeams, agents: renderAgents,
+  attendance: comingSoon, daf: comingSoon, appointments: comingSoon, users: comingSoon,
 };
 
-// ============ NAVIGATION ============
 async function navigate(page) {
   currentPage = page;
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   document.getElementById('pageTitle').textContent =
     { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' }[page] || page;
-
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     await renderers[page]();
@@ -453,7 +359,6 @@ async function navigate(page) {
   }
 }
 
-// ============ EVENT BINDINGS ============
 document.querySelectorAll('.sidebar-item').forEach(el => {
   el.addEventListener('click', (e) => { e.preventDefault(); navigate(el.dataset.page); });
 });
@@ -480,11 +385,9 @@ document.getElementById('clearCacheBtn').addEventListener('click', () => {
   navigate(currentPage);
 });
 
-// ============ BOOT ============
 (async () => {
   try {
     await loadPeriods();
-    // Default to latest year if '2026' isn't present
     if (PERIODS.year && PERIODS.year.length && !PERIODS.year.includes(currentPeriod)) {
       currentPeriod = PERIODS.year[0];
     }
