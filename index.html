@@ -41,6 +41,7 @@
       <div class="text-slate-500 text-[10px] mt-1" id="cacheStatus">Cache: empty</div>
     </div>
   </aside>
+
   <main class="flex-1 ml-64 p-8">
     <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
       <div>
@@ -49,134 +50,114 @@
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <div class="flex bg-white rounded-lg border border-slate-300 p-1">
-          <button data-mode="month" class="period-btn active px-4 py-1.5 text-sm font-medium rounded-md transition">Month</button>
+          <button data-mode="month" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Month</button>
           <button data-mode="quarter" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Quarter</button>
-          <button data-mode="year" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Year</button>
+          <button data-mode="year" class="period-btn active px-4 py-1.5 text-sm font-medium rounded-md transition">Year</button>
         </div>
         <select id="periodSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
+          <option>Loading...</option>
         </select>
         <button id="clearCacheBtn" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium hover:bg-slate-50 transition" title="Clear cache">🔄</button>
       </div>
     </div>
+
     <div id="content">
       <div class="text-center py-20 text-slate-400">Loading...</div>
     </div>
   </main>
 </div>
+
 <script>
 // ============ CONFIG ============
 const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
 const EMAIL = 'jentera.idgc@gmail.com';
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
-const CACHE_VERSION = 'v2';
-
-// Hardcoded periods — reliable, no API call needed
-const PERIODS = {
-  month: [
-    'September 2026', 'August 2026', 'July 2026', 'June 2026',
-    'May 2026', 'April 2026', 'March 2026', 'February 2026', 'January 2026',
-    'December 2025', 'November 2025', 'October 2025', 'September 2025',
-    'August 2025', 'July 2025'
-  ],
-  quarter: ['Q3 2026', 'Q2 2026', 'Q1 2026', 'Q4 2025', 'Q3 2025'],
-  year: ['2026', '2025']
-};
+const CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 let currentPage = 'overview';
-let periodMode = 'month';
-let currentPeriod = 'September 2026';
+let periodMode = 'year';
+let currentPeriod = '2026';
+let PERIODS = { month: [], quarter: [], year: [] };
 
-// ============ ENHANCED CLIENT-SIDE CACHE ============
+// ============ CACHE ============
 class SmartCache {
   constructor() {
     this.cache = new Map();
-    this.hits = 0;
-    this.misses = 0;
+    this.hits = 0; this.misses = 0;
     this.loadFromLocalStorage();
   }
-  _getCacheKey(action, period, extra) {
-    return `${action}|${period}|${JSON.stringify(extra || {})}`;
-  }
-  get(action, period, extra = {}) {
-    const key = this._getCacheKey(action, period, extra);
-    const entry = this.cache.get(key);
-    if (!entry) { this.misses++; this.updateStatus(); return null; }
-    const age = Date.now() - entry.timestamp;
-    if (age > CACHE_TTL) {
-      this.cache.delete(key); this.misses++; this.updateStatus(); return null;
+  _key(a, p, e) { return `${a}|${p}|${JSON.stringify(e || {})}`; }
+  get(a, p, e = {}) {
+    const k = this._key(a, p, e);
+    const hit = this.cache.get(k);
+    if (!hit) { this.misses++; this.updateStatus(); return null; }
+    if (Date.now() - hit.timestamp > CACHE_TTL) {
+      this.cache.delete(k); this.misses++; this.updateStatus(); return null;
     }
     this.hits++; this.updateStatus();
-    return entry.data;
+    return hit.data;
   }
-  set(action, period, extra = {}, data) {
-    const key = this._getCacheKey(action, period, extra);
-    this.cache.set(key, { data, timestamp: Date.now() });
-    this.saveToLocalStorage();
-    this.updateStatus();
+  set(a, p, e = {}, data) {
+    this.cache.set(this._key(a, p, e), { data, timestamp: Date.now() });
+    this.saveToLocalStorage(); this.updateStatus();
   }
   clear() {
     this.cache.clear(); this.hits = 0; this.misses = 0;
-    localStorage.removeItem('wf_cache');
-    this.updateStatus();
+    localStorage.removeItem('wf_cache'); this.updateStatus();
   }
   saveToLocalStorage() {
-    try {
-      const data = Array.from(this.cache.entries()).map(([key, value]) => [key, value]);
-      localStorage.setItem('wf_cache', JSON.stringify(data));
-    } catch (e) { console.warn('Failed to save cache:', e); }
+    try { localStorage.setItem('wf_cache', JSON.stringify([...this.cache.entries()])); } catch (e) {}
   }
   loadFromLocalStorage() {
     try {
-      const stored = localStorage.getItem('wf_cache');
-      if (stored) {
-        const data = JSON.parse(stored);
-        const now = Date.now();
-        data.forEach(([key, value]) => {
-          if (now - value.timestamp < CACHE_TTL) this.cache.set(key, value);
-        });
-      }
-    } catch (e) { console.warn('Failed to load cache:', e); }
+      const raw = localStorage.getItem('wf_cache');
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      const now = Date.now();
+      arr.forEach(([k, v]) => { if (now - v.timestamp < CACHE_TTL) this.cache.set(k, v); });
+    } catch (e) {}
   }
   updateStatus() {
     const total = this.hits + this.misses;
-    const hitRate = total > 0 ? Math.round((this.hits / total) * 100) : 0;
-    const size = this.cache.size;
-    const statusEl = document.getElementById('cacheStatus');
-    if (statusEl) {
-      statusEl.textContent = `Cache: ${size} entries, ${hitRate}% hit rate`;
-      statusEl.title = `${this.hits} hits, ${this.misses} misses`;
-    }
+    const rate = total ? Math.round((this.hits / total) * 100) : 0;
+    const el = document.getElementById('cacheStatus');
+    if (el) el.textContent = `Cache: ${this.cache.size} entries, ${rate}% hit rate`;
   }
   getStats() {
-    return {
-      size: this.cache.size, hits: this.hits, misses: this.misses,
-      hitRate: this.hits + this.misses > 0 ? (this.hits / (this.hits + this.misses)) * 100 : 0
-    };
+    const t = this.hits + this.misses;
+    return { size: this.cache.size, hitRate: t ? (this.hits / t) * 100 : 0 };
   }
 }
 const clientCache = new SmartCache();
 
 // ============ API ============
 async function api(action, extra = {}) {
-  const cached = clientCache.get(action, currentPeriod, extra);
-  if (cached !== null) return cached;
+  const hit = clientCache.get(action, currentPeriod, extra);
+  if (hit !== null) return hit;
+
   const params = new URLSearchParams({ action, email: EMAIL, period: currentPeriod, ...extra });
-  try {
-    const res = await fetch(`${API}?${params}`);
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'API error');
-    clientCache.set(action, currentPeriod, extra, json.data);
-    return json.data;
-  } catch (error) {
-    console.error('API call failed:', error);
-    throw error;
-  }
+  const res = await fetch(`${API}?${params}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  clientCache.set(action, currentPeriod, extra, json.data);
+  return json.data;
 }
 
 // ============ PERIODS ============
+async function loadPeriods() {
+  const params = new URLSearchParams({ action: 'periods', email: EMAIL });
+  const res = await fetch(`${API}?${params}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error);
+  PERIODS = json.data;
+}
+
 function populatePeriodSelect() {
   const sel = document.getElementById('periodSelect');
-  const list = PERIODS[periodMode];
+  const list = PERIODS[periodMode] || [];
+  if (!list.length) {
+    sel.innerHTML = '<option value="">No data</option>';
+    return;
+  }
   sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
   if (list.includes(currentPeriod)) {
     sel.value = currentPeriod;
@@ -190,148 +171,136 @@ function populatePeriodSelect() {
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
 function round(n) { return Math.round(Number(n || 0) * 100) / 100; }
 function badge(v, good, warn) {
-  const color = v >= good ? 'text-green-600' : v >= warn ? 'text-amber-600' : 'text-red-600';
-  return `<span class="${color} font-semibold">${round(v)}</span>`;
+  const c = v >= good ? 'text-green-600' : v >= warn ? 'text-amber-600' : 'text-red-600';
+  return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
-// ============ RENDERERS ============
+// ============ OVERVIEW ============
 async function renderOverview() {
-  // Load overview first — render fast
-  const overview = await api('overview');
-  const performers = overview.performers || [];
-  const lowPerformers = [...performers].sort((a,b) => a.qa - b.qa).slice(0, 5);
+  // Overview always shows YTD for the current year, regardless of month/quarter selection
+  const data = await api('overviewFull', { period: currentPeriod });
 
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-4 gap-5 mb-8">
       <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
         <div class="text-blue-100 text-xs font-medium mb-1">HEADCOUNT</div>
-        <div class="text-3xl font-bold">${overview.headcount || 0}</div>
+        <div class="text-3xl font-bold">${data.headcount || 0}</div>
         <div class="text-blue-100 text-xs mt-1">Active CSRs</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE</div>
-        <div class="text-3xl font-bold text-slate-900">${round(overview.avgQA)}%</div>
-        <div class="text-slate-400 text-xs mt-1">Across all agents</div>
+        <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE (YTD)</div>
+        <div class="text-3xl font-bold text-slate-900">${round(data.avgQA)}%</div>
+        <div class="text-slate-400 text-xs mt-1">Across all active agents</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="text-slate-500 text-xs font-medium mb-1">AVG KPI</div>
-        <div class="text-3xl font-bold text-slate-900">${round(overview.avgKPI)}</div>
+        <div class="text-slate-500 text-xs font-medium mb-1">AVG KPI (YTD)</div>
+        <div class="text-3xl font-bold text-slate-900">${round(data.avgKPI)}</div>
         <div class="text-slate-400 text-xs mt-1">Out of 100</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">PERIOD</div>
-        <div class="text-base font-bold text-slate-900 mt-1 truncate">${esc(overview.period || currentPeriod)}</div>
-        <div class="text-slate-400 text-xs mt-1 capitalize">${periodMode}</div>
+        <div class="text-base font-bold text-slate-900 mt-1 truncate">${esc(data.period || currentPeriod)}</div>
+        <div class="text-slate-400 text-xs mt-1">Year to date</div>
       </div>
     </div>
+
     <div class="grid grid-cols-3 gap-5 mb-8">
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-green-500"></span><h3 class="font-semibold text-slate-900">Top Performers</h3></div>
         <div class="space-y-3">
-          ${performers.slice(0, 5).map((p, i) => `
+          ${(data.performers || []).slice(0, 5).map((p, i) => `
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3 min-w-0">
-                <span class="text-slate-400 text-sm font-medium w-4">${i+1}</span>
+                <span class="text-slate-400 text-sm font-medium w-4">${i + 1}</span>
                 <div class="min-w-0">
                   <div class="text-sm font-medium text-slate-800 truncate">${esc(p.name)}</div>
                   <div class="text-xs text-slate-400 truncate">${esc(p.team || '')}</div>
                 </div>
               </div>
-              <div class="text-green-600 font-semibold text-sm">${round(p.qa)}%</div>
+              <div class="text-green-600 font-semibold text-sm">${round(p.kpi)}</div>
             </div>
           `).join('')}
         </div>
       </div>
+
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-red-500"></span><h3 class="font-semibold text-slate-900">Needs Coaching</h3></div>
         <div class="space-y-3">
-          ${lowPerformers.map((p, i) => `
+          ${(data.lowPerformers || []).slice(0, 5).map((p, i) => `
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3 min-w-0">
-                <span class="text-slate-400 text-sm font-medium w-4">${i+1}</span>
+                <span class="text-slate-400 text-sm font-medium w-4">${i + 1}</span>
                 <div class="min-w-0">
                   <div class="text-sm font-medium text-slate-800 truncate">${esc(p.name)}</div>
                   <div class="text-xs text-slate-400 truncate">${esc(p.team || '')}</div>
                 </div>
               </div>
-              <div class="text-red-600 font-semibold text-sm">${round(p.qa)}%</div>
+              <div class="text-red-600 font-semibold text-sm">${round(p.kpi)}</div>
             </div>
           `).join('')}
         </div>
       </div>
+
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center gap-2 mb-4"><span class="w-2 h-2 rounded-full bg-blue-500"></span><h3 class="font-semibold text-slate-900">Top Markdowns</h3></div>
-        <div class="space-y-2" id="markdownsPanel">
-          <div class="text-slate-400 text-xs">Loading...</div>
+        <div class="space-y-2">
+          ${(data.markdowns || []).map((m, i) => `
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-slate-400 text-xs font-medium w-4">${i + 1}</span>
+                <div class="text-xs font-medium text-slate-800 truncate">${esc(m.criterion)}</div>
+              </div>
+              <div class="text-slate-700 font-semibold text-xs whitespace-nowrap">${m.failures}</div>
+            </div>
+          `).join('') || '<div class="text-slate-400 text-xs">No data</div>'}
         </div>
       </div>
     </div>
+
     <div class="bg-white rounded-xl p-5 shadow-sm">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-slate-900">📈 Performance Trends</h3>
-        <span class="text-xs text-slate-400">Top 5 vs Bottom 5</span>
+        <h3 class="font-semibold text-slate-900">📈 Team Average QA — Monthly Trend</h3>
+        <span class="text-xs text-slate-400">All active agents</span>
       </div>
       <div class="h-80"><canvas id="trendChart"></canvas></div>
     </div>
   `;
 
-  // Load markdowns asynchronously (doesn't block page render)
-  api('markdowns', { scope: 'all' }).then(m => {
-    const panel = document.getElementById('markdownsPanel');
-    if (!panel) return;
-    panel.innerHTML = m.slice(0, 5).map((md, i) => `
-      <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-slate-400 text-xs font-medium w-4">${i+1}</span>
-          <div class="text-xs font-medium text-slate-800 truncate">${esc(md.criterion)}</div>
-        </div>
-        <div class="text-slate-700 font-semibold text-xs whitespace-nowrap">${md.failures}</div>
-      </div>
-    `).join('') || '<div class="text-slate-400 text-xs">No data</div>';
-  }).catch(() => {
-    const panel = document.getElementById('markdownsPanel');
-    if (panel) panel.innerHTML = '<div class="text-slate-400 text-xs">Unable to load</div>';
-  });
-
-  // Load trend chart asynchronously
-  api('qaTrends').then(trends => {
-    const datasets = [];
-    const greenColors = ['#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
-    trends.top5.forEach((agent, i) => {
-      datasets.push({
-        label: agent.name, data: agent.data,
-        borderColor: greenColors[i], backgroundColor: greenColors[i],
-        borderWidth: 2, tension: 0.3, pointRadius: 3, pointHoverRadius: 5
-      });
-    });
-    const redColors = ['#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5'];
-    trends.bottom5.forEach((agent, i) => {
-      datasets.push({
-        label: agent.name, data: agent.data,
-        borderColor: redColors[i], backgroundColor: redColors[i],
-        borderWidth: 2, tension: 0.3, pointRadius: 3, pointHoverRadius: 5,
-        borderDash: [5, 5]
-      });
-    });
-    new Chart(document.getElementById('trendChart'), {
-      type: 'line',
-      data: { labels: trends.months, datasets },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: true, position: 'bottom', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${round(ctx.parsed.y)}%` } }
-        },
-        scales: {
-          y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'QA Score (%)' } },
-          x: { title: { display: true, text: 'Month' } }
-        }
+  // Render single-line trend
+  const trend = data.trend || { months: [], avgQA: [] };
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: trend.months,
+      datasets: [{
+        label: 'Team Avg QA',
+        data: trend.avgQA,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        borderWidth: 3,
+        fill: true,
+        tension: 0.35,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#2563eb'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `Avg QA: ${round(ctx.parsed.y)}%` } }
+      },
+      scales: {
+        y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'QA Score (%)' } },
+        x: { title: { display: true, text: 'Month' } }
       }
-    });
-  }).catch(err => console.error('Failed to load trends:', err));
+    }
+  });
 }
 
+// ============ KPI REPORT ============
 async function renderKPI() {
   const rows = await api('kpi');
   document.getElementById('content').innerHTML = `
@@ -350,9 +319,9 @@ async function renderKPI() {
           </tr>
         </thead>
         <tbody>
-          ${rows.sort((a,b) => b.kpi - a.kpi).map((r, i) => `
+          ${rows.sort((a, b) => b.kpi - a.kpi).map((r, i) => `
             <tr class="border-b border-slate-100 hover:bg-slate-50">
-              <td class="px-4 py-2 text-slate-400">${i+1}</td>
+              <td class="px-4 py-2 text-slate-400">${i + 1}</td>
               <td class="px-4 py-2 font-medium text-slate-800">${esc(r.name)}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(r.team || '')}</td>
               <td class="px-4 py-2 text-right">${badge(r.qa, 90, 80)}</td>
@@ -368,6 +337,7 @@ async function renderKPI() {
   `;
 }
 
+// ============ MARKDOWNS ============
 async function renderMarkdowns() {
   const rows = await api('markdowns', { scope: 'all' });
   document.getElementById('content').innerHTML = `
@@ -394,6 +364,7 @@ async function renderMarkdowns() {
   `;
 }
 
+// ============ TEAMS ============
 async function renderTeams() {
   const teams = await api('teams');
   document.getElementById('content').innerHTML = `
@@ -410,8 +381,8 @@ async function renderTeams() {
             </div>
           </div>
           <div class="space-y-1">
-            ${t.agents.slice(0, 6).map(a => `<div class="text-sm text-slate-600">• ${esc(a)}</div>`).join('')}
-            ${t.agents.length > 6 ? `<div class="text-xs text-slate-400 mt-1">+ ${t.agents.length - 6} more</div>` : ''}
+            ${t.agents.slice(0, 8).map(a => `<div class="text-sm text-slate-600">• ${esc(a)}</div>`).join('')}
+            ${t.agents.length > 8 ? `<div class="text-xs text-slate-400 mt-1">+ ${t.agents.length - 8} more</div>` : ''}
           </div>
         </div>
       `).join('')}
@@ -419,6 +390,7 @@ async function renderTeams() {
   `;
 }
 
+// ============ AGENTS ============
 async function renderAgents() {
   const agents = await api('agents');
   document.getElementById('content').innerHTML = `
@@ -433,7 +405,7 @@ async function renderAgents() {
           </tr>
         </thead>
         <tbody>
-          ${agents.sort((a,b) => b.avgScore - a.avgScore).map(a => `
+          ${agents.sort((a, b) => b.avgScore - a.avgScore).map(a => `
             <tr class="border-b border-slate-100 hover:bg-slate-50">
               <td class="px-4 py-2 font-medium text-slate-800">${esc(a.name)}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(a.team || '')}</td>
@@ -447,23 +419,30 @@ async function renderAgents() {
   `;
 }
 
+// ============ PLACEHOLDERS ============
+const comingSoon = async () => {
+  document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>';
+};
+
 const renderers = {
   overview: renderOverview,
   kpi: renderKPI,
   markdowns: renderMarkdowns,
   teams: renderTeams,
   agents: renderAgents,
-  attendance: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
-  daf: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
-  appointments: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
-  users: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
+  attendance: comingSoon,
+  daf: comingSoon,
+  appointments: comingSoon,
+  users: comingSoon,
 };
 
+// ============ NAVIGATION ============
 async function navigate(page) {
   currentPage = page;
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   document.getElementById('pageTitle').textContent =
     { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' }[page] || page;
+
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     await renderers[page]();
@@ -474,6 +453,7 @@ async function navigate(page) {
   }
 }
 
+// ============ EVENT BINDINGS ============
 document.querySelectorAll('.sidebar-item').forEach(el => {
   el.addEventListener('click', (e) => { e.preventDefault(); navigate(el.dataset.page); });
 });
@@ -500,8 +480,20 @@ document.getElementById('clearCacheBtn').addEventListener('click', () => {
   navigate(currentPage);
 });
 
-populatePeriodSelect();
-navigate('overview');
+// ============ BOOT ============
+(async () => {
+  try {
+    await loadPeriods();
+    // Default to latest year if '2026' isn't present
+    if (PERIODS.year && PERIODS.year.length && !PERIODS.year.includes(currentPeriod)) {
+      currentPeriod = PERIODS.year[0];
+    }
+    populatePeriodSelect();
+    navigate('overview');
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load periods: ${esc(e.message)}</div>`;
+  }
+})();
 </script>
 </body>
 </html>
