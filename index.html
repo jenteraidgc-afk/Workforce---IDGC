@@ -983,7 +983,6 @@ async function renderDAF() {
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => infr[ctx[0].dataIndex].name, label: (ctx) => `${ctx.parsed.x} incidents` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
   });
 
-  // Filter bindings
   document.getElementById('dafFilterMode').addEventListener('change', (e) => {
     dafFilterMode = e.target.value;
     renderDAF();
@@ -1006,6 +1005,60 @@ function toggleDAFDetails(idx) {
   if (row) row.classList.toggle('hidden');
 }
 window.toggleDAFDetails = toggleDAFDetails;
+
+// ============ DAF GHOST ROW ============
+const ghostRowState = {
+  raw: { active: false, values: [] },
+  ir:  { active: false, values: [] }
+};
+const gridHeaders = { raw: [], ir: [] };
+
+function activateGhostRow(which) {
+  ghostRowState[which].active = true;
+  ghostRowState[which].values = [];
+  renderDAFGrid(which);
+}
+
+function cancelGhostRow(which) {
+  ghostRowState[which].active = false;
+  ghostRowState[which].values = [];
+  renderDAFGrid(which);
+}
+
+function setGhostValue(which, colIdx, value) {
+  ghostRowState[which].values[colIdx] = value;
+}
+
+async function saveGhostRow(which) {
+  const state = ghostRowState[which];
+  const values = state.values || [];
+  const isEmpty = values.every(v => !String(v || '').trim());
+  if (isEmpty) { cancelGhostRow(which); return; }
+
+  const action = which === 'raw' ? 'addDAFRow' : 'addIRRow';
+  const statusId = which === 'raw' ? 'dafRawSaveStatus' : 'dafIRSaveStatus';
+  const st = document.getElementById(statusId);
+  if (st) { st.textContent = 'Saving...'; st.className = 'text-xs font-medium text-slate-500'; }
+
+  try {
+    const headers = gridHeaders[which] || [];
+    const padded = [];
+    for (let i = 0; i < headers.length; i++) {
+      padded.push(values[i] !== undefined ? values[i] : '');
+    }
+    await apiPost({ action, values: padded, email: EMAIL });
+    ghostRowState[which].active = false;
+    ghostRowState[which].values = [];
+
+    clientCache.clear();
+
+    if (st) { st.textContent = '✓ Row added'; st.className = 'text-xs font-medium text-green-600'; setTimeout(() => { st.textContent = ''; }, 2000); }
+
+    await renderDAF();
+  } catch (e) {
+    if (st) { st.textContent = 'Add failed: ' + e.message; st.className = 'text-xs font-medium text-red-600'; }
+  }
+}
 
 async function renderDAFGrid(which) {
   const containerId = which === 'raw' ? 'dafRawGrid' : 'dafIRGrid';
@@ -1032,15 +1085,9 @@ async function renderDAFGrid(which) {
     return;
   }
 
-  if (!grid.rows || grid.rows.length === 0) {
-    container.innerHTML = '<div class="text-slate-400 text-sm py-6">No rows match the current filter.</div>';
-    return;
-  }
-
-  // Find column index for "Valid" (Raw Data only)
+  gridHeaders[which] = grid.headers || [];
   const validColIdx = grid.headers.findIndex(h => String(h || '').toLowerCase().trim() === 'valid');
 
-  // Display formatter: replace "true"/"false" with ✓/—
   function fmtCell(v, colIdx) {
     if (colIdx === validColIdx) {
       const s = String(v || '').trim().toLowerCase();
@@ -1052,6 +1099,10 @@ async function renderDAFGrid(which) {
   }
 
   let html = `
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-xs text-slate-500">Click a cell to edit · Click "+ Add Row" to append a new entry</div>
+      <button onclick="activateGhostRow('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition">+ Add Row</button>
+    </div>
     <table class="w-full text-xs" style="border-collapse: collapse;">
       <thead class="bg-slate-100">
         <tr>
@@ -1062,7 +1113,11 @@ async function renderDAFGrid(which) {
       <tbody>
   `;
 
-  grid.rows.forEach(r => {
+  if (!grid.rows || grid.rows.length === 0) {
+    html += `<tr><td colspan="${grid.headers.length + 1}" class="px-2 py-4 text-slate-400 text-center">No rows match the current filter.</td></tr>`;
+  }
+
+  (grid.rows || []).forEach(r => {
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="px-2 py-1 text-slate-400 border border-slate-200 bg-slate-50">${r.rowNumber}</td>`;
     r.cells.forEach((v, ci) => {
@@ -1072,9 +1127,67 @@ async function renderDAFGrid(which) {
     html += `</tr>`;
   });
 
+  if (ghostRowState[which].active) {
+    html += `<tr style="background:#eff6ff;" id="ghostRow-${which}">`;
+    html += `<td class="px-2 py-1 text-blue-600 font-semibold border border-blue-200 text-center">NEW</td>`;
+    grid.headers.forEach((h, ci) => {
+      const val = ghostRowState[which].values[ci] || '';
+      const isLast = ci === grid.headers.length - 1;
+      html += `<td class="border border-blue-200" style="padding:0;">
+        <input
+          type="text"
+          class="ghost-input w-full text-xs px-1.5 py-1 border-0 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-transparent"
+          data-which="${which}"
+          data-col="${ci}"
+          value="${esc(val)}"
+          placeholder="${esc(h)}"
+          oninput="setGhostValue('${which}', ${ci}, this.value)"
+          onkeydown="handleGhostKey(event, '${which}', ${ci}, ${grid.headers.length}, ${isLast})"
+        />
+      </td>`;
+    });
+    html += `</tr>`;
+
+    html += `<tr style="background:#eff6ff;"><td colspan="${grid.headers.length + 1}" class="px-2 py-2 text-right border border-blue-200">
+      <span class="text-xs text-blue-600 mr-3">Press <strong>Enter</strong> in the last cell to save, <strong>Esc</strong> to cancel</span>
+      <button onclick="cancelGhostRow('${which}')" class="text-xs px-3 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 mr-2">✗ Cancel</button>
+      <button onclick="saveGhostRow('${which}')" class="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium">✓ Save</button>
+    </td></tr>`;
+  } else {
+    html += `<tr><td colspan="${grid.headers.length + 1}" class="px-2 py-2 text-center border border-dashed border-slate-300 text-slate-400 text-xs cursor-pointer hover:bg-slate-50" onclick="activateGhostRow('${which}')">+ Add new row</td></tr>`;
+  }
+
   html += `</tbody></table>`;
   container.innerHTML = html;
   container.dataset.saveStatusId = saveStatusId;
+
+  if (ghostRowState[which].active) {
+    const first = container.querySelector('.ghost-input');
+    if (first) first.focus();
+  }
+}
+
+function handleGhostKey(ev, which, colIdx, totalCols, isLast) {
+  if (ev.key === 'Escape') {
+    ev.preventDefault();
+    cancelGhostRow(which);
+    return;
+  }
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (isLast) {
+      saveGhostRow(which);
+    } else {
+      const next = ev.target.closest('td').nextElementSibling?.querySelector('input');
+      if (next) next.focus();
+      else saveGhostRow(which);
+    }
+    return;
+  }
+  if (ev.key === 'Tab' && !ev.shiftKey && isLast) {
+    ev.preventDefault();
+    saveGhostRow(which);
+  }
 }
 
 async function editDAFCell(td) {
@@ -1154,6 +1267,12 @@ async function editDAFCell(td) {
   });
 }
 window.editDAFCell = editDAFCell;
+
+window.activateGhostRow = activateGhostRow;
+window.cancelGhostRow = cancelGhostRow;
+window.setGhostValue = setGhostValue;
+window.saveGhostRow = saveGhostRow;
+window.handleGhostKey = handleGhostKey;
 
 // ============ NAVIGATION ============
 const comingSoon = async () => {
