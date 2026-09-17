@@ -13,17 +13,6 @@
   .period-btn.active { background: #2563eb; color: white; }
   .agent-link { cursor: pointer; }
   .agent-link:hover { color: #2563eb; text-decoration: underline; }
-  .loading-bar {
-    height: 3px;
-    background: #2563eb;
-    border-radius: 2px;
-    animation: pulse-width 1.5s ease-in-out infinite;
-    max-width: 100%;
-  }
-  @keyframes pulse-width {
-    0%, 100% { width: 20%; }
-    50% { width: 85%; }
-  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -74,12 +63,15 @@
       </div>
     </div>
 
-    <!-- Loading progress bar -->
+    <!-- Loading progress bar (percent) -->
     <div id="loadingBar" class="hidden mb-6">
-      <div class="h-1 bg-slate-200 rounded-full overflow-hidden">
-        <div class="loading-bar"></div>
+      <div class="h-2 bg-slate-200 rounded-full overflow-hidden">
+        <div id="loadingProgress" class="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
       </div>
-      <div class="text-xs text-slate-500 mt-2 text-center font-medium" id="loadingText">Loading...</div>
+      <div class="flex items-center justify-between text-xs text-slate-500 mt-2 font-medium">
+        <span id="loadingText">Loading...</span>
+        <span id="loadingPercent" class="font-bold text-blue-600">0%</span>
+      </div>
     </div>
 
     <div id="content">
@@ -181,24 +173,53 @@ function badge(v, good, warn) {
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
-// ============ LOADING BAR ============
+// ============ LOADING BAR (percent) ============
 function startLoading(label) {
   loadingStarted = Date.now();
   const bar = document.getElementById('loadingBar');
+  const prog = document.getElementById('loadingProgress');
   const txt = document.getElementById('loadingText');
+  const pct = document.getElementById('loadingPercent');
+
   if (bar) bar.classList.remove('hidden');
-  if (txt) txt.textContent = (label || 'Loading') + ' · 0.0s';
+  if (prog) prog.style.width = '0%';
+  if (pct) pct.textContent = '0%';
+  if (txt) txt.textContent = (label || 'Loading') + '...';
+
   if (loadingTimer) clearInterval(loadingTimer);
+
   loadingTimer = setInterval(() => {
-    const elapsed = ((Date.now() - loadingStarted) / 1000).toFixed(1);
-    if (txt) txt.textContent = (label || 'Loading') + ' · ' + elapsed + 's';
-  }, 100);
+    const current = parseFloat((prog && prog.style.width) || '0');
+    let increment;
+    if (current < 30) increment = 8;
+    else if (current < 60) increment = 4;
+    else if (current < 80) increment = 2;
+    else if (current < 90) increment = 1;
+    else increment = 0.3;
+
+    const next = Math.min(90, current + increment);
+    if (prog) prog.style.width = next + '%';
+    if (pct) pct.textContent = Math.round(next) + '%';
+  }, 200);
 }
+
 function stopLoading() {
   if (loadingTimer) { clearInterval(loadingTimer); loadingTimer = null; }
   const elapsed = ((Date.now() - loadingStarted) / 1000).toFixed(1);
-  const bar = document.getElementById('loadingBar');
-  if (bar) bar.classList.add('hidden');
+
+  const prog = document.getElementById('loadingProgress');
+  const pct = document.getElementById('loadingPercent');
+  const txt = document.getElementById('loadingText');
+
+  if (prog) prog.style.width = '100%';
+  if (pct) pct.textContent = '100%';
+  if (txt) txt.textContent = 'Done · ' + elapsed + 's';
+
+  setTimeout(() => {
+    const bar = document.getElementById('loadingBar');
+    if (bar) bar.classList.add('hidden');
+  }, 400);
+
   return elapsed;
 }
 
@@ -209,8 +230,7 @@ async function openAgentProfile(name) {
   modal.classList.remove('hidden');
   box.innerHTML = `
     <div class="text-center py-20">
-      <div class="loading-bar mx-auto" style="width: 200px;"></div>
-      <div class="text-sm text-slate-500 mt-4">Loading profile for ${esc(name)}...</div>
+      <div class="text-sm text-slate-500">Loading profile for ${esc(name)}...</div>
     </div>
   `;
 
@@ -585,7 +605,6 @@ async function navigate(page) {
   const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
   document.getElementById('pageTitle').textContent = labels[page] || page;
 
-  // Only show loading bar on cache miss
   const cached = clientCache.get(page, currentPeriod, {});
   if (!cached) startLoading('Loading ' + (labels[page] || page));
 
