@@ -240,6 +240,7 @@ async function openAgentProfile(name) {
   try {
     const data = await api('agentProfile', { name });
     const p = data.profile || {};
+    const daf = data.dafPoints || { points: 0, incidents: 0, irs: 0 };
     box.innerHTML = `
       <div class="flex items-start justify-between mb-6">
         <div class="flex items-center gap-4">
@@ -253,7 +254,14 @@ async function openAgentProfile(name) {
             </p>
           </div>
         </div>
-        <button onclick="closeAgentModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">✕</button>
+        <div class="flex items-center gap-4">
+          <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl px-5 py-3 shadow-sm text-right">
+            <div class="text-red-100 text-[10px] font-medium uppercase">Total DAF Points</div>
+            <div class="text-2xl font-bold">${round(daf.points)}</div>
+            <div class="text-red-100 text-[10px]">${daf.incidents} incidents · ${daf.irs} IRs</div>
+          </div>
+          <button onclick="closeAgentModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">✕</button>
+        </div>
       </div>
       <div class="grid grid-cols-2 gap-5 mb-6">
         <div class="bg-slate-50 rounded-xl p-4">
@@ -763,7 +771,7 @@ async function editAttendanceCell(td) {
 }
 window.editAttendanceCell = editAttendanceCell;
 
-// ============ DAF TRACKER ============
+// ============ DAF TRACKER (with editable grids) ============
 let dafMonth = 'August';
 let dafYear = '2026';
 const DAF_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -775,7 +783,6 @@ async function renderDAF() {
     dafMonth = parts[0];
     dafYear = parts[1];
   }
-
   const periodStr = `${dafMonth} ${dafYear}`;
 
   let data;
@@ -904,6 +911,32 @@ async function renderDAF() {
         </table>
       </div>
     </div>
+
+    <div class="bg-white rounded-xl shadow-sm mb-6">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+        <h3 class="font-semibold text-slate-900">🗂️ Raw Data Log</h3>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-500">Click any cell to edit</span>
+          <span id="dafRawSaveStatus" class="text-xs font-medium"></span>
+        </div>
+      </div>
+      <div id="dafRawGrid" class="overflow-x-auto p-4">
+        <div class="text-center py-10 text-slate-400">Loading Raw Data...</div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+        <h3 class="font-semibold text-slate-900">🗂️ IR Tracker</h3>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-500">Click any cell to edit</span>
+          <span id="dafIRSaveStatus" class="text-xs font-medium"></span>
+        </div>
+      </div>
+      <div id="dafIRGrid" class="overflow-x-auto p-4">
+        <div class="text-center py-10 text-slate-400">Loading IR Tracker...</div>
+      </div>
+    </div>
   `;
 
   const daily = data.dailyTrend || [];
@@ -928,6 +961,9 @@ async function renderDAF() {
     dafYear = e.target.value;
     renderDAF();
   });
+
+  await renderDAFGrid('raw');
+  await renderDAFGrid('ir');
 }
 
 function toggleDAFDetails(idx) {
@@ -935,6 +971,119 @@ function toggleDAFDetails(idx) {
   if (row) row.classList.toggle('hidden');
 }
 window.toggleDAFDetails = toggleDAFDetails;
+
+async function renderDAFGrid(which) {
+  const containerId = which === 'raw' ? 'dafRawGrid' : 'dafIRGrid';
+  const saveStatusId = which === 'raw' ? 'dafRawSaveStatus' : 'dafIRSaveStatus';
+  const action = which === 'raw' ? 'dafRawGrid' : 'dafIRGrid';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  let grid;
+  try {
+    const params = new URLSearchParams({ action, email: EMAIL });
+    const res = await fetch(`${API}?${params}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'API error');
+    grid = json.data;
+  } catch (e) {
+    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  if (grid.error) {
+    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`;
+    return;
+  }
+
+  if (!grid.rows || grid.rows.length === 0) {
+    container.innerHTML = '<div class="text-slate-400 text-sm py-6">No rows in this tab.</div>';
+    return;
+  }
+
+  let html = `
+    <table class="w-full text-xs" style="border-collapse: collapse;">
+      <thead class="bg-slate-100">
+        <tr>
+          <th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 bg-slate-200">Row</th>
+          ${grid.headers.map(h => `<th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 whitespace-nowrap">${esc(h)}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  grid.rows.forEach(r => {
+    html += `<tr class="hover:bg-slate-50">`;
+    html += `<td class="px-2 py-1 text-slate-400 border border-slate-200 bg-slate-50">${r.rowNumber}</td>`;
+    r.cells.forEach((v, ci) => {
+      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="editDAFCell(this)">${esc(v) || '<span class="text-slate-300">—</span>'}</td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+  container.dataset.saveStatusId = saveStatusId;
+}
+
+async function editDAFCell(td) {
+  if (td.dataset.editing === '1') return;
+  const currentValue = td.dataset.value || '';
+  const originalHtml = td.innerHTML;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'w-full text-xs px-1 py-0.5 border border-blue-400 rounded';
+  input.value = currentValue;
+  td.innerHTML = '';
+  td.appendChild(input);
+  td.dataset.editing = '1';
+  input.focus();
+  input.select();
+
+  const commit = async () => {
+    const newValue = input.value;
+    td.dataset.editing = '0';
+    if (newValue === currentValue) { td.innerHTML = originalHtml; return; }
+    td.style.background = '#fef3c7';
+    try {
+      await apiPost({
+        action: 'updateDAFCell',
+        tabName: td.dataset.tab,
+        rowNumber: td.dataset.row,
+        colIndex: td.dataset.col,
+        value: newValue,
+        email: EMAIL
+      });
+      td.dataset.value = newValue;
+      td.innerHTML = esc(newValue) || '<span class="text-slate-300">—</span>';
+      td.style.background = '#d1fae5';
+      setTimeout(() => { td.style.background = ''; }, 1000);
+      const container = td.closest('[id$="Grid"]');
+      const stId = container ? container.dataset.saveStatusId : null;
+      if (stId) {
+        const st = document.getElementById(stId);
+        if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; setTimeout(() => { st.textContent = ''; }, 1500); }
+      }
+    } catch (e) {
+      td.style.background = '#fee2e2';
+      td.innerHTML = originalHtml;
+      const container = td.closest('[id$="Grid"]');
+      const stId = container ? container.dataset.saveStatusId : null;
+      if (stId) {
+        const st = document.getElementById(stId);
+        if (st) { st.textContent = 'Save failed: ' + e.message; st.className = 'text-xs font-medium text-red-600'; }
+      }
+    }
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') input.blur();
+    if (ev.key === 'Escape') { td.dataset.editing = '0'; td.innerHTML = originalHtml; }
+  });
+}
+window.editDAFCell = editDAFCell;
 
 // ============ NAVIGATION ============
 const comingSoon = async () => {
@@ -954,24 +1103,14 @@ async function navigate(page) {
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
   document.getElementById('pageTitle').textContent = labels[page] || page;
-
   const simpleFetches = { kpi: 'kpi', markdowns: 'markdowns', teams: 'teams', agents: 'agents', overview: 'overviewFull' };
   const cacheKey = simpleFetches[page];
   const alreadyCached = cacheKey ? clientCache.has(cacheKey, currentPeriod, page === 'markdowns' ? { scope: 'all' } : {}) : true;
-
-  if (!alreadyCached) {
-    showLoadingBar();
-    setLoadingStatus(0, 1, labels[page]);
-  }
-
+  if (!alreadyCached) { showLoadingBar(); setLoadingStatus(0, 1, labels[page]); }
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     await renderers[page]();
-    if (!alreadyCached) {
-      setLoadingStatus(1, 1, labels[page]);
-      await new Promise(r => setTimeout(r, 250));
-      hideLoadingBar();
-    }
+    if (!alreadyCached) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
     const stats = clientCache.getStats();
     document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
   } catch (e) {
