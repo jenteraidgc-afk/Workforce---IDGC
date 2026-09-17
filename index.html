@@ -764,20 +764,45 @@ async function editAttendanceCell(td) {
 window.editAttendanceCell = editAttendanceCell;
 
 // ============ DAF TRACKER ============
+let dafMonth = 'August';
+let dafYear = '2026';
+const DAF_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAF_YEARS = ['2025','2026','2027'];
+
 async function renderDAF() {
+  const parts = String(currentPeriod).split(/\s+/);
+  if (parts.length >= 2 && DAF_MONTHS.includes(parts[0]) && !dafMonth) {
+    dafMonth = parts[0];
+    dafYear = parts[1];
+  }
+
+  const periodStr = `${dafMonth} ${dafYear}`;
+
   let data;
   try {
-    data = await api('dafOverview', { period: currentPeriod });
+    const params = new URLSearchParams({ action: 'dafOverview', email: EMAIL, period: periodStr });
+    const res = await fetch(`${API}?${params}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'API error');
+    data = json.data;
   } catch (e) {
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load DAF: ${esc(e.message)}</div>`;
     return;
   }
 
   document.getElementById('content').innerHTML = `
-    <div class="flex items-center justify-between mb-6">
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex items-center justify-between flex-wrap gap-4">
       <div>
         <h2 class="text-xl font-bold text-slate-900">📋 DAF Tracker</h2>
         <p class="text-xs text-slate-500 mt-1">Only incidents within the last 6 months are counted. Current cutoff: <strong>${esc(data.validityCutoff || '')}</strong></p>
+      </div>
+      <div class="flex items-center gap-3">
+        <select id="dafMonthSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[140px]">
+          ${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafMonth ? 'selected' : ''}>${m}</option>`).join('')}
+        </select>
+        <select id="dafYearSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[100px]">
+          ${DAF_YEARS.map(y => `<option value="${y}" ${y === dafYear ? 'selected' : ''}>${y}</option>`).join('')}
+        </select>
       </div>
     </div>
 
@@ -808,14 +833,14 @@ async function renderDAF() {
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-slate-900">📈 Daily Incident Trend</h3>
-          <span class="text-xs text-slate-400">${esc(currentPeriod)}</span>
+          <span class="text-xs text-slate-400">${esc(periodStr)}</span>
         </div>
         <div class="h-72"><canvas id="dafDailyChart"></canvas></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-slate-900">🎯 Top 5 Infractions</h3>
-          <span class="text-xs text-slate-400">${esc(currentPeriod)}</span>
+          <span class="text-xs text-slate-400">${esc(periodStr)}</span>
         </div>
         <div class="h-72"><canvas id="dafInfractionsChart"></canvas></div>
       </div>
@@ -894,6 +919,15 @@ async function renderDAF() {
     data: { labels: infr.map(i => i.name.length > 30 ? i.name.slice(0, 27) + '…' : i.name), datasets: [{ label: 'Count', data: infr.map(i => i.count), backgroundColor: ['#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5'], borderRadius: 6 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => infr[ctx[0].dataIndex].name, label: (ctx) => `${ctx.parsed.x} incidents` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
   });
+
+  document.getElementById('dafMonthSelect').addEventListener('change', (e) => {
+    dafMonth = e.target.value;
+    renderDAF();
+  });
+  document.getElementById('dafYearSelect').addEventListener('change', (e) => {
+    dafYear = e.target.value;
+    renderDAF();
+  });
 }
 
 function toggleDAFDetails(idx) {
@@ -920,12 +954,28 @@ async function navigate(page) {
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
   document.getElementById('pageTitle').textContent = labels[page] || page;
+
+  const simpleFetches = { kpi: 'kpi', markdowns: 'markdowns', teams: 'teams', agents: 'agents', overview: 'overviewFull' };
+  const cacheKey = simpleFetches[page];
+  const alreadyCached = cacheKey ? clientCache.has(cacheKey, currentPeriod, page === 'markdowns' ? { scope: 'all' } : {}) : true;
+
+  if (!alreadyCached) {
+    showLoadingBar();
+    setLoadingStatus(0, 1, labels[page]);
+  }
+
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     await renderers[page]();
+    if (!alreadyCached) {
+      setLoadingStatus(1, 1, labels[page]);
+      await new Promise(r => setTimeout(r, 250));
+      hideLoadingBar();
+    }
     const stats = clientCache.getStats();
     document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
   } catch (e) {
+    if (!alreadyCached) hideLoadingBar();
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
   }
 }
