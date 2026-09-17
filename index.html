@@ -13,6 +13,17 @@
   .period-btn.active { background: #2563eb; color: white; }
   .agent-link { cursor: pointer; }
   .agent-link:hover { color: #2563eb; text-decoration: underline; }
+  .loading-bar {
+    height: 3px;
+    background: #2563eb;
+    border-radius: 2px;
+    animation: pulse-width 1.5s ease-in-out infinite;
+    max-width: 100%;
+  }
+  @keyframes pulse-width {
+    0%, 100% { width: 20%; }
+    50% { width: 85%; }
+  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -63,6 +74,14 @@
       </div>
     </div>
 
+    <!-- Loading progress bar -->
+    <div id="loadingBar" class="hidden mb-6">
+      <div class="h-1 bg-slate-200 rounded-full overflow-hidden">
+        <div class="loading-bar"></div>
+      </div>
+      <div class="text-xs text-slate-500 mt-2 text-center font-medium" id="loadingText">Loading...</div>
+    </div>
+
     <div id="content">
       <div class="text-center py-20 text-slate-400">Loading...</div>
     </div>
@@ -85,6 +104,8 @@ let currentPage = 'overview';
 let periodMode = 'month';
 let currentPeriod = 'August 2026';
 let PERIODS = { month: [], quarter: [], year: [] };
+let loadingTimer = null;
+let loadingStarted = 0;
 
 class SmartCache {
   constructor() { this.cache = new Map(); this.hits = 0; this.misses = 0; this.loadFromLocalStorage(); }
@@ -160,12 +181,38 @@ function badge(v, good, warn) {
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
+// ============ LOADING BAR ============
+function startLoading(label) {
+  loadingStarted = Date.now();
+  const bar = document.getElementById('loadingBar');
+  const txt = document.getElementById('loadingText');
+  if (bar) bar.classList.remove('hidden');
+  if (txt) txt.textContent = (label || 'Loading') + ' · 0.0s';
+  if (loadingTimer) clearInterval(loadingTimer);
+  loadingTimer = setInterval(() => {
+    const elapsed = ((Date.now() - loadingStarted) / 1000).toFixed(1);
+    if (txt) txt.textContent = (label || 'Loading') + ' · ' + elapsed + 's';
+  }, 100);
+}
+function stopLoading() {
+  if (loadingTimer) { clearInterval(loadingTimer); loadingTimer = null; }
+  const elapsed = ((Date.now() - loadingStarted) / 1000).toFixed(1);
+  const bar = document.getElementById('loadingBar');
+  if (bar) bar.classList.add('hidden');
+  return elapsed;
+}
+
 // ============ AGENT MODAL ============
 async function openAgentProfile(name) {
   const modal = document.getElementById('agentModal');
   const box = document.getElementById('agentModalContent');
   modal.classList.remove('hidden');
-  box.innerHTML = '<div class="text-center py-20 text-slate-400">Loading profile...</div>';
+  box.innerHTML = `
+    <div class="text-center py-20">
+      <div class="loading-bar mx-auto" style="width: 200px;"></div>
+      <div class="text-sm text-slate-500 mt-4">Loading profile for ${esc(name)}...</div>
+    </div>
+  `;
 
   try {
     const data = await api('agentProfile', { name });
@@ -222,7 +269,7 @@ async function openAgentProfile(name) {
         <div class="h-64"><canvas id="modalQaChart"></canvas></div>
       </div>
 
-      <div class="bg-white border border-slate-200 rounded-xl p-5">
+      <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
         <h3 class="font-semibold text-slate-900 mb-3">🎯 Sub-Category Analytics (${esc(currentPeriod)})</h3>
         ${data.analytics && data.analytics.length > 0 ? `
           <table class="w-full text-sm">
@@ -247,9 +294,46 @@ async function openAgentProfile(name) {
           </table>
         ` : '<div class="text-slate-400 text-sm py-4">No analytics data for this period.</div>'}
       </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <h3 class="font-semibold text-slate-900 mb-3">📋 Criteria Accuracy (${esc(currentPeriod)})</h3>
+        ${data.criteriaTable && data.criteriaTable.rows && data.criteriaTable.rows.length > 0 ? `
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th class="text-left px-3 py-2 font-semibold text-slate-600">Criterion</th>
+                <th class="text-right px-3 py-2 font-semibold text-slate-600">Yes</th>
+                <th class="text-right px-3 py-2 font-semibold text-slate-600">No</th>
+                <th class="text-right px-3 py-2 font-semibold text-slate-600">Total</th>
+                <th class="text-right px-3 py-2 font-semibold text-slate-600">Accuracy</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.criteriaTable.rows.map(r => {
+                const accColor = r.accuracy >= 95 ? 'text-green-600'
+                  : r.accuracy >= 90 ? 'text-amber-600'
+                  : 'text-red-600';
+                return `
+                  <tr class="border-b border-slate-100">
+                    <td class="px-3 py-2 text-slate-700">${esc(r.criterion)}</td>
+                    <td class="px-3 py-2 text-right text-slate-600">${r.yes}</td>
+                    <td class="px-3 py-2 text-right text-slate-600">${r.no}</td>
+                    <td class="px-3 py-2 text-right text-slate-600">${r.total}</td>
+                    <td class="px-3 py-2 text-right font-semibold ${accColor}">${r.accuracy.toFixed(2)}%</td>
+                  </tr>
+                `;
+              }).join('')}
+              <tr class="bg-slate-50 border-t-2 border-slate-300">
+                <td class="px-3 py-2 font-bold text-slate-900" colspan="3">Total Evaluations: ${data.criteriaTable.totalEvaluations}</td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2 text-right font-bold text-slate-900">Avg: ${data.criteriaTable.avgAccuracy.toFixed(2)}%</td>
+              </tr>
+            </tbody>
+          </table>
+        ` : '<div class="text-slate-400 text-sm py-4">No criteria data for this period.</div>'}
+      </div>
     `;
 
-    // Charts
     const aT = data.assessmentTrend || { months: [], scores: [] };
     const qT = data.qaTrend || { months: [], scores: [] };
 
@@ -498,14 +582,25 @@ const renderers = {
 async function navigate(page) {
   currentPage = page;
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-  document.getElementById('pageTitle').textContent =
-    { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' }[page] || page;
+  const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
+  document.getElementById('pageTitle').textContent = labels[page] || page;
+
+  // Only show loading bar on cache miss
+  const cached = clientCache.get(page, currentPeriod, {});
+  if (!cached) startLoading('Loading ' + (labels[page] || page));
+
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     await renderers[page]();
     const stats = clientCache.getStats();
-    document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
+    if (cached) {
+      document.getElementById('lastSync').textContent = `From cache · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
+    } else {
+      const elapsed = stopLoading();
+      document.getElementById('lastSync').textContent = `Loaded in ${elapsed}s · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
+    }
   } catch (e) {
+    stopLoading();
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
   }
 }
