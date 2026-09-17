@@ -11,6 +11,8 @@
   .sidebar-item.active { background: #2563eb; color: white; }
   .sidebar-item:hover:not(.active) { background: #1e293b; }
   .period-btn.active { background: #2563eb; color: white; }
+  .agent-link { cursor: pointer; }
+  .agent-link:hover { color: #2563eb; text-decoration: underline; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -50,9 +52,9 @@
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <div class="flex bg-white rounded-lg border border-slate-300 p-1">
-          <button data-mode="month" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Month</button>
+          <button data-mode="month" class="period-btn active px-4 py-1.5 text-sm font-medium rounded-md transition">Month</button>
           <button data-mode="quarter" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Quarter</button>
-          <button data-mode="year" class="period-btn active px-4 py-1.5 text-sm font-medium rounded-md transition">Year</button>
+          <button data-mode="year" class="period-btn px-4 py-1.5 text-sm font-medium rounded-md transition text-slate-600">Year</button>
         </div>
         <select id="periodSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
           <option>Loading...</option>
@@ -67,14 +69,21 @@
   </main>
 </div>
 
+<!-- Agent Profile Modal -->
+<div id="agentModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center overflow-y-auto p-8">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-8">
+    <div id="agentModalContent" class="p-6"></div>
+  </div>
+</div>
+
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
 const EMAIL = 'jentera.idgc@gmail.com';
 const CACHE_TTL = 5 * 60 * 1000;
 
 let currentPage = 'overview';
-let periodMode = 'year';
-let currentPeriod = '2026';
+let periodMode = 'month';
+let currentPeriod = 'August 2026';
 let PERIODS = { month: [], quarter: [], year: [] };
 
 class SmartCache {
@@ -151,6 +160,149 @@ function badge(v, good, warn) {
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
+// ============ AGENT MODAL ============
+async function openAgentProfile(name) {
+  const modal = document.getElementById('agentModal');
+  const box = document.getElementById('agentModalContent');
+  modal.classList.remove('hidden');
+  box.innerHTML = '<div class="text-center py-20 text-slate-400">Loading profile...</div>';
+
+  try {
+    const data = await api('agentProfile', { name });
+    const p = data.profile || {};
+
+    box.innerHTML = `
+      <div class="flex items-start justify-between mb-6">
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-2xl font-bold">
+            ${esc((name.split(',')[0] || '?').charAt(0))}
+          </div>
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900">${esc(name)}</h2>
+            <p class="text-sm text-slate-500">
+              ${esc(p.position || '—')}
+              ${p.wave ? ' · ' + esc(p.wave) : ''}
+              ${p.employmentStatus ? ' · ' + esc(p.employmentStatus) : ''}
+            </p>
+          </div>
+        </div>
+        <button onclick="closeAgentModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">✕</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-5 mb-6">
+        <div class="bg-slate-50 rounded-xl p-4">
+          <h3 class="text-xs font-semibold text-slate-500 uppercase mb-3">Employment</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Immediate Head</span><span class="font-medium text-slate-800">${esc(p.immediateHead || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Shift</span><span class="font-medium text-slate-800">${esc(p.shift || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Hire Date</span><span class="font-medium text-slate-800">${esc(p.hireDate || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Regularization</span><span class="font-medium text-slate-800">${esc(p.regularizationDate || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Nickname</span><span class="font-medium text-slate-800">${esc(p.nickname || '—')}</span></div>
+          </div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-4">
+          <h3 class="text-xs font-semibold text-slate-500 uppercase mb-3">Contact</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Email</span><span class="font-medium text-slate-800 truncate ml-2 text-right">${esc(p.email || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Mobile</span><span class="font-medium text-slate-800">${esc(p.mobile || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Birthday</span><span class="font-medium text-slate-800">${esc(p.birthday || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Emergency</span><span class="font-medium text-slate-800 truncate ml-2 text-right">${esc(p.emergencyName || '—')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Em. Contact</span><span class="font-medium text-slate-800">${esc(p.emergencyContact || '—')}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
+        <h3 class="font-semibold text-slate-900 mb-3">📊 Assessment Score Trend</h3>
+        <div class="h-64"><canvas id="modalAssessChart"></canvas></div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
+        <h3 class="font-semibold text-slate-900 mb-3">📈 QA Performance Score Trend</h3>
+        <div class="h-64"><canvas id="modalQaChart"></canvas></div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <h3 class="font-semibold text-slate-900 mb-3">🎯 Sub-Category Analytics (${esc(currentPeriod)})</h3>
+        ${data.analytics && data.analytics.length > 0 ? `
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th class="text-left px-3 py-2 font-semibold text-slate-600">Main Category</th>
+                <th class="text-left px-3 py-2 font-semibold text-slate-600">Sub Category</th>
+                <th class="text-right px-3 py-2 font-semibold text-slate-600">Count</th>
+                <th class="text-right px-3 py-2 font-semibold text-slate-600">Avg Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.analytics.map(a => `
+                <tr class="border-b border-slate-100">
+                  <td class="px-3 py-2 text-slate-700">${esc(a.mainCategory)}</td>
+                  <td class="px-3 py-2 text-slate-700">${esc(a.subCategory)}</td>
+                  <td class="px-3 py-2 text-right text-slate-600">${a.count}</td>
+                  <td class="px-3 py-2 text-right">${badge(a.avgScore, 90, 80)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : '<div class="text-slate-400 text-sm py-4">No analytics data for this period.</div>'}
+      </div>
+    `;
+
+    // Charts
+    const aT = data.assessmentTrend || { months: [], scores: [] };
+    const qT = data.qaTrend || { months: [], scores: [] };
+
+    new Chart(document.getElementById('modalAssessChart'), {
+      type: 'line',
+      data: {
+        labels: aT.months,
+        datasets: [{
+          label: 'Assessment Score', data: aT.scores,
+          borderColor: '#7c3aed', backgroundColor: 'rgba(124, 58, 237, 0.1)',
+          borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, spanGaps: true
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { min: 50, max: 100, title: { display: true, text: 'Score' } } }
+      }
+    });
+
+    new Chart(document.getElementById('modalQaChart'), {
+      type: 'line',
+      data: {
+        labels: qT.months,
+        datasets: [{
+          label: 'QA Score', data: qT.scores,
+          borderColor: '#16a34a', backgroundColor: 'rgba(22, 163, 74, 0.1)',
+          borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, spanGaps: true
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { min: 60, max: 100, title: { display: true, text: 'Score' } } }
+      }
+    });
+  } catch (err) {
+    box.innerHTML = `<div class="text-red-600 p-4">Failed to load profile: ${esc(err.message)}</div>`;
+  }
+}
+
+function closeAgentModal() {
+  document.getElementById('agentModal').classList.add('hidden');
+}
+
+window.openAgentProfile = openAgentProfile;
+window.closeAgentModal = closeAgentModal;
+
+document.getElementById('agentModal').addEventListener('click', (e) => {
+  if (e.target.id === 'agentModal') closeAgentModal();
+});
+
+// ============ OVERVIEW ============
 async function renderOverview() {
   const data = await api('overviewFull', { period: currentPeriod });
 
@@ -162,19 +314,19 @@ async function renderOverview() {
         <div class="text-blue-100 text-xs mt-1">Active CSRs</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE (YTD)</div>
+        <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE</div>
         <div class="text-3xl font-bold text-slate-900">${round(data.avgQA)}%</div>
-        <div class="text-slate-400 text-xs mt-1">Across all active agents</div>
+        <div class="text-slate-400 text-xs mt-1">Across active agents</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="text-slate-500 text-xs font-medium mb-1">AVG KPI (YTD)</div>
+        <div class="text-slate-500 text-xs font-medium mb-1">AVG KPI</div>
         <div class="text-3xl font-bold text-slate-900">${round(data.avgKPI)}</div>
         <div class="text-slate-400 text-xs mt-1">Out of 100</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">PERIOD</div>
         <div class="text-base font-bold text-slate-900 mt-1 truncate">${esc(data.period || currentPeriod)}</div>
-        <div class="text-slate-400 text-xs mt-1">Year to date</div>
+        <div class="text-slate-400 text-xs mt-1 capitalize">${periodMode}</div>
       </div>
     </div>
 
@@ -193,32 +345,20 @@ async function renderOverview() {
     data: {
       labels: trend.months,
       datasets: [{
-        label: 'Team Avg QA',
-        data: trend.avgQA,
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.1)',
-        borderWidth: 3,
-        fill: true,
-        tension: 0.35,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#2563eb'
+        label: 'Team Avg QA', data: trend.avgQA,
+        borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb'
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => `Avg QA: ${round(ctx.parsed.y)}%` } }
-      },
-      scales: {
-        y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'QA Score (%)' } },
-        x: { title: { display: true, text: 'Month' } }
-      }
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg QA: ${round(ctx.parsed.y)}%` } } },
+      scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'QA Score (%)' } }, x: { title: { display: true, text: 'Month' } } }
     }
   });
 }
 
+// ============ KPI REPORT ============
 async function renderKPI() {
   const rows = await api('kpi');
   document.getElementById('content').innerHTML = `
@@ -240,7 +380,7 @@ async function renderKPI() {
           ${rows.sort((a, b) => b.kpi - a.kpi).map((r, i) => `
             <tr class="border-b border-slate-100 hover:bg-slate-50">
               <td class="px-4 py-2 text-slate-400">${i + 1}</td>
-              <td class="px-4 py-2 font-medium text-slate-800">${esc(r.name)}</td>
+              <td class="px-4 py-2 font-medium text-slate-800 agent-link" onclick="openAgentProfile('${r.name.replace(/'/g, "\\'")}')">${esc(r.name)}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(r.team || '')}</td>
               <td class="px-4 py-2 text-right">${badge(r.qa, 90, 80)}</td>
               <td class="px-4 py-2 text-right text-slate-600">${r.attComponent}</td>
@@ -255,6 +395,7 @@ async function renderKPI() {
   `;
 }
 
+// ============ MARKDOWNS ============
 async function renderMarkdowns() {
   const rows = await api('markdowns', { scope: 'all' });
   document.getElementById('content').innerHTML = `
@@ -281,6 +422,7 @@ async function renderMarkdowns() {
   `;
 }
 
+// ============ TEAMS ============
 async function renderTeams() {
   const teams = await api('teams');
   document.getElementById('content').innerHTML = `
@@ -289,7 +431,7 @@ async function renderTeams() {
         <div class="bg-white rounded-xl p-5 shadow-sm">
           <div class="flex items-center gap-3 mb-3">
             <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
-              ${t.teamLeader.split(' ')[0].charAt(0)}
+              ${esc((t.teamLeader.split(',')[0] || '?').charAt(0))}
             </div>
             <div>
               <div class="font-semibold text-slate-900">${esc(t.teamLeader)}</div>
@@ -297,7 +439,13 @@ async function renderTeams() {
             </div>
           </div>
           <div class="space-y-1">
-            ${t.agents.slice(0, 8).map(a => `<div class="text-sm text-slate-600">• ${esc(a)}</div>`).join('')}
+            ${t.agents.slice(0, 8).map(a => `
+              <div class="text-sm text-slate-600 flex items-center gap-2">
+                <span class="text-slate-400">•</span>
+                <span class="agent-link" onclick="openAgentProfile('${a.name.replace(/'/g, "\\'")}')">${esc(a.name)}</span>
+                ${a.position ? `<span class="text-xs text-slate-400">(${esc(a.position)})</span>` : ''}
+              </div>
+            `).join('')}
             ${t.agents.length > 8 ? `<div class="text-xs text-slate-400 mt-1">+ ${t.agents.length - 8} more</div>` : ''}
           </div>
         </div>
@@ -306,6 +454,7 @@ async function renderTeams() {
   `;
 }
 
+// ============ AGENTS ============
 async function renderAgents() {
   const agents = await api('agents');
   document.getElementById('content').innerHTML = `
@@ -315,6 +464,7 @@ async function renderAgents() {
           <tr>
             <th class="text-left px-4 py-3 font-semibold text-slate-600">Agent</th>
             <th class="text-left px-4 py-3 font-semibold text-slate-600">Team</th>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Position</th>
             <th class="text-right px-4 py-3 font-semibold text-slate-600">Audits</th>
             <th class="text-right px-4 py-3 font-semibold text-slate-600">Avg Score</th>
           </tr>
@@ -322,8 +472,9 @@ async function renderAgents() {
         <tbody>
           ${agents.sort((a, b) => b.avgScore - a.avgScore).map(a => `
             <tr class="border-b border-slate-100 hover:bg-slate-50">
-              <td class="px-4 py-2 font-medium text-slate-800">${esc(a.name)}</td>
+              <td class="px-4 py-2 font-medium text-slate-800 agent-link" onclick="openAgentProfile('${a.name.replace(/'/g, "\\'")}')">${esc(a.name)}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(a.team || '')}</td>
+              <td class="px-4 py-2 text-slate-500 text-xs">${esc(a.position || '')}</td>
               <td class="px-4 py-2 text-right text-slate-600">${a.audits}</td>
               <td class="px-4 py-2 text-right">${badge(a.avgScore, 90, 80)}%</td>
             </tr>
@@ -388,8 +539,8 @@ document.getElementById('clearCacheBtn').addEventListener('click', () => {
 (async () => {
   try {
     await loadPeriods();
-    if (PERIODS.year && PERIODS.year.length && !PERIODS.year.includes(currentPeriod)) {
-      currentPeriod = PERIODS.year[0];
+    if (PERIODS.month && PERIODS.month.length) {
+      if (!PERIODS.month.includes(currentPeriod)) currentPeriod = PERIODS.month[0];
     }
     populatePeriodSelect();
     navigate('overview');
