@@ -106,7 +106,6 @@ const PREFETCH_ACTIONS = [
   { action: 'markdowns',    label: 'Markdowns', extra: { scope: 'all' } },
   { action: 'teams',        label: 'Teams' },
   { action: 'agents',       label: 'Agents' },
-  { action: 'dafOverview',  label: 'DAF' },
 ];
 
 class SmartCache {
@@ -771,23 +770,33 @@ async function editAttendanceCell(td) {
 }
 window.editAttendanceCell = editAttendanceCell;
 
-// ============ DAF TRACKER (with editable grids) ============
-let dafMonth = 'August';
-let dafYear = '2026';
+// ============ DAF TRACKER (with filter) ============
+let dafFilterMode = 'all';
+let dafStartMonth = 'January';
+let dafStartYear = '2026';
+let dafEndMonth = 'December';
+let dafEndYear = '2026';
 const DAF_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAF_YEARS = ['2025','2026','2027'];
 
-async function renderDAF() {
-  const parts = String(currentPeriod).split(/\s+/);
-  if (parts.length >= 2 && DAF_MONTHS.includes(parts[0]) && !dafMonth) {
-    dafMonth = parts[0];
-    dafYear = parts[1];
+function dafQuery() {
+  const p = new URLSearchParams({ email: EMAIL, filterMode: dafFilterMode });
+  if (dafFilterMode === 'custom') {
+    p.set('startPeriod', `${dafStartMonth} ${dafStartYear}`);
+    p.set('endPeriod', `${dafEndMonth} ${dafEndYear}`);
+  } else if (dafFilterMode === 'thisMonth') {
+    const now = new Date();
+    p.set('startPeriod', `${DAF_MONTHS[now.getMonth()]} ${now.getFullYear()}`);
+    p.set('endPeriod', `${DAF_MONTHS[now.getMonth()]} ${now.getFullYear()}`);
   }
-  const periodStr = `${dafMonth} ${dafYear}`;
+  return p;
+}
 
+async function renderDAF() {
   let data;
   try {
-    const params = new URLSearchParams({ action: 'dafOverview', email: EMAIL, period: periodStr });
+    const params = dafQuery();
+    params.set('action', 'dafOverview');
     const res = await fetch(`${API}?${params}`);
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'API error');
@@ -798,26 +807,46 @@ async function renderDAF() {
   }
 
   document.getElementById('content').innerHTML = `
-    <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex items-center justify-between flex-wrap gap-4">
-      <div>
-        <h2 class="text-xl font-bold text-slate-900">📋 DAF Tracker</h2>
-        <p class="text-xs text-slate-500 mt-1">Only incidents within the last 6 months are counted. Current cutoff: <strong>${esc(data.validityCutoff || '')}</strong></p>
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">📋 DAF Tracker</h2>
+          <p class="text-xs text-slate-500 mt-1">Only incidents within the last 6 months are counted. Current cutoff: <strong>${esc(data.validityCutoff || '')}</strong></p>
+        </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <label class="text-xs text-slate-500 font-medium">Filter:</label>
+          <select id="dafFilterMode" class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium">
+            <option value="all" ${dafFilterMode === 'all' ? 'selected' : ''}>All Time</option>
+            <option value="thisMonth" ${dafFilterMode === 'thisMonth' ? 'selected' : ''}>This Month</option>
+            <option value="custom" ${dafFilterMode === 'custom' ? 'selected' : ''}>Custom Range</option>
+          </select>
+        </div>
       </div>
-      <div class="flex items-center gap-3">
-        <select id="dafMonthSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[140px]">
-          ${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafMonth ? 'selected' : ''}>${m}</option>`).join('')}
-        </select>
-        <select id="dafYearSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[100px]">
-          ${DAF_YEARS.map(y => `<option value="${y}" ${y === dafYear ? 'selected' : ''}>${y}</option>`).join('')}
-        </select>
-      </div>
+      ${dafFilterMode === 'custom' ? `
+        <div class="flex items-center gap-3 flex-wrap pt-3 mt-3 border-t border-slate-200">
+          <span class="text-xs text-slate-500 font-medium">From:</span>
+          <select id="dafStartMonth" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
+            ${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafStartMonth ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+          <select id="dafStartYear" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
+            ${DAF_YEARS.map(y => `<option value="${y}" ${y === dafStartYear ? 'selected' : ''}>${y}</option>`).join('')}
+          </select>
+          <span class="text-xs text-slate-500 font-medium">To:</span>
+          <select id="dafEndMonth" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
+            ${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafEndMonth ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+          <select id="dafEndYear" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
+            ${DAF_YEARS.map(y => `<option value="${y}" ${y === dafEndYear ? 'selected' : ''}>${y}</option>`).join('')}
+          </select>
+        </div>
+      ` : ''}
     </div>
 
     <div class="grid grid-cols-4 gap-5 mb-8">
       <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl p-5 shadow-sm">
         <div class="text-red-100 text-xs font-medium mb-1">TOTAL POINTS</div>
         <div class="text-3xl font-bold">${round(data.totalPoints)}</div>
-        <div class="text-red-100 text-xs mt-1">Valid records only</div>
+        <div class="text-red-100 text-xs mt-1">${esc(data.appliedFilter || 'Valid records only')}</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">INCIDENTS</div>
@@ -840,14 +869,14 @@ async function renderDAF() {
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-slate-900">📈 Daily Incident Trend</h3>
-          <span class="text-xs text-slate-400">${esc(periodStr)}</span>
+          <span class="text-xs text-slate-400">${esc(data.appliedFilter || '')}</span>
         </div>
         <div class="h-72"><canvas id="dafDailyChart"></canvas></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-slate-900">🎯 Top 5 Infractions</h3>
-          <span class="text-xs text-slate-400">${esc(periodStr)}</span>
+          <span class="text-xs text-slate-400">${esc(data.appliedFilter || '')}</span>
         </div>
         <div class="h-72"><canvas id="dafInfractionsChart"></canvas></div>
       </div>
@@ -953,14 +982,19 @@ async function renderDAF() {
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => infr[ctx[0].dataIndex].name, label: (ctx) => `${ctx.parsed.x} incidents` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
   });
 
-  document.getElementById('dafMonthSelect').addEventListener('change', (e) => {
-    dafMonth = e.target.value;
+  // Filter bindings
+  document.getElementById('dafFilterMode').addEventListener('change', (e) => {
+    dafFilterMode = e.target.value;
     renderDAF();
   });
-  document.getElementById('dafYearSelect').addEventListener('change', (e) => {
-    dafYear = e.target.value;
-    renderDAF();
-  });
+  const sm = document.getElementById('dafStartMonth');
+  const sy = document.getElementById('dafStartYear');
+  const em = document.getElementById('dafEndMonth');
+  const ey = document.getElementById('dafEndYear');
+  if (sm) sm.addEventListener('change', (e) => { dafStartMonth = e.target.value; renderDAF(); });
+  if (sy) sy.addEventListener('change', (e) => { dafStartYear = e.target.value; renderDAF(); });
+  if (em) em.addEventListener('change', (e) => { dafEndMonth = e.target.value; renderDAF(); });
+  if (ey) ey.addEventListener('change', (e) => { dafEndYear = e.target.value; renderDAF(); });
 
   await renderDAFGrid('raw');
   await renderDAFGrid('ir');
@@ -981,7 +1015,8 @@ async function renderDAFGrid(which) {
 
   let grid;
   try {
-    const params = new URLSearchParams({ action, email: EMAIL });
+    const params = dafQuery();
+    params.set('action', action);
     const res = await fetch(`${API}?${params}`);
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'API error');
@@ -997,7 +1032,7 @@ async function renderDAFGrid(which) {
   }
 
   if (!grid.rows || grid.rows.length === 0) {
-    container.innerHTML = '<div class="text-slate-400 text-sm py-6">No rows in this tab.</div>';
+    container.innerHTML = '<div class="text-slate-400 text-sm py-6">No rows match the current filter.</div>';
     return;
   }
 
