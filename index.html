@@ -13,6 +13,12 @@
   .period-btn.active { background: #2563eb; color: white; }
   .agent-link { cursor: pointer; }
   .agent-link:hover { color: #2563eb; text-decoration: underline; }
+  .att-cell { padding: 4px 6px; font-size: 11px; text-align: center; border: 1px solid #e2e8f0; cursor: pointer; }
+  .att-cell:hover { background: #eff6ff; }
+  .att-cell.saving { background: #fef3c7; }
+  .att-cell.saved { background: #d1fae5; }
+  .att-cell.error { background: #fee2e2; }
+  .team-separator { background: #1e293b; color: white; font-weight: bold; text-align: center; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -154,6 +160,17 @@ async function api(action, extra = {}) {
   return json.data;
 }
 
+async function apiPost(payload) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  return json.data;
+}
+
 async function loadPeriods() {
   const params = new URLSearchParams({ action: 'periods', email: EMAIL });
   const res = await fetch(`${API}?${params}`);
@@ -182,14 +199,8 @@ function badge(v, good, warn) {
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
-function showLoadingBar() {
-  const bar = document.getElementById('loadingBar');
-  if (bar) bar.classList.remove('hidden');
-}
-function hideLoadingBar() {
-  const bar = document.getElementById('loadingBar');
-  if (bar) bar.classList.add('hidden');
-}
+function showLoadingBar() { const b = document.getElementById('loadingBar'); if (b) b.classList.remove('hidden'); }
+function hideLoadingBar() { const b = document.getElementById('loadingBar'); if (b) b.classList.add('hidden'); }
 function setLoadingStatus(done, total, currentLabel) {
   const pctVal = total > 0 ? Math.round((done / total) * 100) : 0;
   const prog = document.getElementById('loadingProgress');
@@ -226,11 +237,9 @@ async function openAgentProfile(name) {
   const box = document.getElementById('agentModalContent');
   modal.classList.remove('hidden');
   box.innerHTML = `<div class="text-center py-20 text-sm text-slate-500">Loading profile for ${esc(name)}...</div>`;
-
   try {
     const data = await api('agentProfile', { name });
     const p = data.profile || {};
-
     box.innerHTML = `
       <div class="flex items-start justify-between mb-6">
         <div class="flex items-center gap-4">
@@ -246,7 +255,6 @@ async function openAgentProfile(name) {
         </div>
         <button onclick="closeAgentModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">✕</button>
       </div>
-
       <div class="grid grid-cols-2 gap-5 mb-6">
         <div class="bg-slate-50 rounded-xl p-4">
           <h3 class="text-xs font-semibold text-slate-500 uppercase mb-3">Employment</h3>
@@ -269,17 +277,14 @@ async function openAgentProfile(name) {
           </div>
         </div>
       </div>
-
       <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
         <h3 class="font-semibold text-slate-900 mb-3">📊 Assessment Score Trend</h3>
         <div class="h-64"><canvas id="modalAssessChart"></canvas></div>
       </div>
-
       <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
         <h3 class="font-semibold text-slate-900 mb-3">📈 QA Performance Score Trend</h3>
         <div class="h-64"><canvas id="modalQaChart"></canvas></div>
       </div>
-
       <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
         <h3 class="font-semibold text-slate-900 mb-3">🎯 Sub-Category Analytics (${esc(currentPeriod)})</h3>
         ${data.analytics && data.analytics.length > 0 ? `
@@ -305,7 +310,6 @@ async function openAgentProfile(name) {
           </table>
         ` : '<div class="text-slate-400 text-sm py-4">No analytics data for this period.</div>'}
       </div>
-
       <div class="bg-white border border-slate-200 rounded-xl p-5">
         <h3 class="font-semibold text-slate-900 mb-3">📋 Criteria Accuracy (${esc(currentPeriod)})</h3>
         ${data.criteriaTable && data.criteriaTable.rows && data.criteriaTable.rows.length > 0 ? `
@@ -342,16 +346,13 @@ async function openAgentProfile(name) {
         ` : '<div class="text-slate-400 text-sm py-4">No criteria data for this period.</div>'}
       </div>
     `;
-
     const aT = data.assessmentTrend || { months: [], scores: [] };
     const qT = data.qaTrend || { months: [], scores: [] };
-
     new Chart(document.getElementById('modalAssessChart'), {
       type: 'line',
       data: { labels: aT.months, datasets: [{ label: 'Assessment Score', data: aT.scores, borderColor: '#7c3aed', backgroundColor: 'rgba(124, 58, 237, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, spanGaps: true }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 50, max: 100, title: { display: true, text: 'Score' } } } }
     });
-
     new Chart(document.getElementById('modalQaChart'), {
       type: 'line',
       data: { labels: qT.months, datasets: [{ label: 'QA Score', data: qT.scores, borderColor: '#16a34a', backgroundColor: 'rgba(22, 163, 74, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, spanGaps: true }] },
@@ -361,7 +362,6 @@ async function openAgentProfile(name) {
     box.innerHTML = `<div class="text-red-600 p-4">Failed to load profile: ${esc(err.message)}</div>`;
   }
 }
-
 function closeAgentModal() { document.getElementById('agentModal').classList.add('hidden'); }
 window.openAgentProfile = openAgentProfile;
 window.closeAgentModal = closeAgentModal;
@@ -394,15 +394,13 @@ async function renderOverview() {
         <div class="text-slate-400 text-xs mt-1 capitalize">${periodMode}</div>
       </div>
     </div>
-
     <div class="bg-white rounded-xl p-5 shadow-sm mb-6">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-slate-900">📈 Team Average QA — Monthly Trend</h3>
+        <h3 class="font-semibold text-slate-900">📈 Team Average KPI — Monthly Trend</h3>
         <span class="text-xs text-slate-400">All active agents</span>
       </div>
-      <div class="h-80"><canvas id="trendChart"></canvas></div>
+      <div class="h-80"><canvas id="kpiTrendChart"></canvas></div>
     </div>
-
     <div class="grid grid-cols-2 gap-5 mb-6">
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
@@ -419,32 +417,44 @@ async function renderOverview() {
         <div class="h-72"><canvas id="ahtChart"></canvas></div>
       </div>
     </div>
-
     <div class="grid grid-cols-2 gap-5">
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-slate-900">👥 Agents per Team</h3>
-          <span class="text-xs text-slate-400">Active roster</span>
+          <span class="text-xs text-slate-400">Team Leads only</span>
         </div>
-        <div class="h-72"><canvas id="teamChart"></canvas></div>
+        <div class="h-80"><canvas id="teamChart"></canvas></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-slate-900">📊 Assessment Score — Monthly Average</h3>
           <span class="text-xs text-slate-400">Org-wide</span>
         </div>
-        <div class="h-72"><canvas id="assessChart"></canvas></div>
+        <div class="h-80"><canvas id="assessChart"></canvas></div>
       </div>
     </div>
   `;
 
-  const trend = data.trend || { months: [], avgQA: [] };
-  new Chart(document.getElementById('trendChart'), {
+  // KPI Trend chart
+  const kpiTrend = data.trend || { months: [], avgKPI: [] };
+  new Chart(document.getElementById('kpiTrendChart'), {
     type: 'line',
-    data: { labels: trend.months, datasets: [{ label: 'Team Avg QA', data: trend.avgQA, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg QA: ${round(ctx.parsed.y)}%` } } }, scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'QA Score (%)' } }, x: { title: { display: true, text: 'Month' } } } }
+    data: {
+      labels: kpiTrend.months,
+      datasets: [{
+        label: 'Team Avg KPI', data: kpiTrend.avgKPI,
+        borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg KPI: ${round(ctx.parsed.y)}` } } },
+      scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'KPI Score' } }, x: { title: { display: true, text: 'Month' } } }
+    }
   });
 
+  // Category Top 5
   const cats = data.categoryTop5 || [];
   new Chart(document.getElementById('categoryChart'), {
     type: 'bar',
@@ -452,6 +462,7 @@ async function renderOverview() {
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x} audits` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
   });
 
+  // AHT Trend
   const aht = data.ahtTrend || { months: [], avgAht: [] };
   new Chart(document.getElementById('ahtChart'), {
     type: 'line',
@@ -459,13 +470,34 @@ async function renderOverview() {
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} sec` } } }, scales: { y: { beginAtZero: false, title: { display: true, text: 'Seconds' } }, x: { title: { display: true, text: 'Month' } } } }
   });
 
+  // Agents per Team — PIE
   const teams = data.agentsPerTeam || [];
+  const pieColors = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#f59e0b', '#0891b2', '#db2777', '#65a30d', '#6366f1', '#ea580c', '#0ea5e9', '#14b8a6'];
   new Chart(document.getElementById('teamChart'), {
-    type: 'bar',
-    data: { labels: teams.map(t => t.teamLeader.split(',')[0]), datasets: [{ label: 'Agents', data: teams.map(t => t.count), backgroundColor: '#16a34a', borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => teams[ctx[0].dataIndex].teamLeader, label: (ctx) => `${ctx.parsed.y} agents` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Agents' } }, x: { ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 45 } } } }
+    type: 'pie',
+    data: {
+      labels: teams.map(t => t.teamLeader.split(',')[0] + ' (' + t.count + ')'),
+      datasets: [{
+        data: teams.map(t => t.count),
+        backgroundColor: pieColors.slice(0, teams.length),
+        borderWidth: 2, borderColor: '#ffffff'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } },
+        tooltip: {
+          callbacks: {
+            title: (ctx) => teams[ctx[0].dataIndex].teamLeader,
+            label: (ctx) => `${ctx.parsed} agents`
+          }
+        }
+      }
+    }
   });
 
+  // Assessment Trend
   const assess = data.assessmentTrend || { months: [], avgAssess: [] };
   new Chart(document.getElementById('assessChart'), {
     type: 'line',
@@ -601,6 +633,162 @@ async function renderAgents() {
   `;
 }
 
+// ============ ATTENDANCE ============
+async function renderAttendance() {
+  const grid = await api('attendanceGrid');
+
+  if (grid.error) {
+    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`;
+    return;
+  }
+
+  const cellCodes = grid.cellCodes || ['P', 'A', 'RD', 'TB', 'VL', 'SL', 'LWP', 'UT', 'Holiday', 'SLP'];
+
+  let html = `
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+        <h3 class="font-semibold text-slate-900">📅 ${esc(grid.tabName)}</h3>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-500">Click any cell to edit</span>
+          <span id="saveStatus" class="text-xs font-medium"></span>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="text-xs" style="border-collapse: collapse;">
+          <thead class="bg-slate-100">
+            <tr>
+              <th class="sticky left-0 bg-slate-100 z-10 px-3 py-2 text-left font-semibold text-slate-600 border border-slate-200">Name</th>
+              ${grid.dayHeaders.map(h => `<th class="px-1 py-2 text-center font-medium text-slate-500 border border-slate-200" style="min-width: 32px;" title="${esc(h.display)}">${esc(h.num || h.label).slice(0, 4)}</th>`).join('')}
+              ${grid.summaryHeaders.map(h => `<th class="px-2 py-2 text-center font-semibold text-slate-600 border border-slate-200 bg-slate-200" style="min-width: 50px;">${esc(h.label)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+  `;
+
+  grid.rows.forEach(r => {
+    if (r.type === 'team') {
+      html += `
+        <tr>
+          <td class="sticky left-0 bg-slate-800 text-white font-bold px-3 py-1 border border-slate-700" colspan="${1 + grid.dayHeaders.length + grid.summaryHeaders.length}">
+            ${esc(r.team)}
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    html += `<tr class="hover:bg-slate-50">`;
+    html += `<td class="sticky left-0 bg-white z-10 px-3 py-1 font-medium text-slate-800 border border-slate-200 whitespace-nowrap">${esc(r.name)}</td>`;
+
+    r.cells.forEach((cellVal, ci) => {
+      const bg = cellVal === 'P' ? 'background:#d1fae5;' :
+                 cellVal === 'A' ? 'background:#fee2e2;' :
+                 cellVal === 'RD' ? 'background:#e5e7eb;' :
+                 cellVal === 'TB' ? 'background:#fef3c7;' :
+                 cellVal === 'VL' ? 'background:#dbeafe;' :
+                 cellVal === 'SL' ? 'background:#fce7f3;' :
+                 cellVal === 'LWP' ? 'background:#fed7aa;' :
+                 cellVal === 'UT' ? 'background:#fef9c3;' : '';
+      html += `<td class="att-cell" style="${bg}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(cellVal)}" onclick="editAttendanceCell(this)">${esc(cellVal)}</td>`;
+    });
+
+    r.summary.forEach(s => {
+      html += `<td class="px-2 py-1 text-center font-semibold text-slate-700 border border-slate-200 bg-slate-50">${esc(s)}</td>`;
+    });
+
+    html += `</tr>`;
+  });
+
+  html += `
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+// Inline cell editing
+async function editAttendanceCell(td) {
+  if (td.dataset.editing === '1') return;
+  const currentValue = td.dataset.value || '';
+  const codes = ['P', 'A', 'RD', 'TB', 'VL', 'SL', 'LWP', 'UT', 'Holiday', 'SLP', ''];
+
+  // Build a small dropdown
+  const select = document.createElement('select');
+  select.className = 'w-full text-xs';
+  codes.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c || '—';
+    if (c === currentValue) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  const original = td.innerHTML;
+  td.innerHTML = '';
+  td.appendChild(select);
+  td.dataset.editing = '1';
+  select.focus();
+
+  const commit = async () => {
+    const newValue = select.value;
+    td.dataset.editing = '0';
+    if (newValue === currentValue) {
+      td.innerHTML = original;
+      return;
+    }
+    td.classList.add('saving');
+    td.innerHTML = newValue || '—';
+    try {
+      await apiPost({
+        action: 'updateAttendanceCell',
+        tabName: currentAttendanceTab(),
+        rowNumber: td.dataset.row,
+        colIndex: td.dataset.col,
+        value: newValue,
+        email: EMAIL
+      });
+      td.dataset.value = newValue;
+      td.classList.remove('saving');
+      td.classList.add('saved');
+      document.getElementById('saveStatus').textContent = 'Saved';
+      document.getElementById('saveStatus').className = 'text-xs font-medium text-green-600';
+      setTimeout(() => {
+        td.classList.remove('saved');
+        const st = document.getElementById('saveStatus');
+        if (st) st.textContent = '';
+      }, 1500);
+      // Invalidate attendance cache so next visit refetches
+      clientCache.cache.forEach((v, k) => { if (k.startsWith('attendanceGrid|')) clientCache.cache.delete(k); });
+    } catch (e) {
+      td.classList.remove('saving');
+      td.classList.add('error');
+      td.innerHTML = original;
+      document.getElementById('saveStatus').textContent = 'Save failed: ' + e.message;
+      document.getElementById('saveStatus').className = 'text-xs font-medium text-red-600';
+    }
+  };
+
+  select.addEventListener('change', commit);
+  select.addEventListener('blur', commit);
+  select.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { select.blur(); }
+    if (ev.key === 'Escape') { td.dataset.editing = '0'; td.innerHTML = original; }
+  });
+}
+
+function currentAttendanceTab() {
+  // Read the tab name from the rendered heading
+  const h = document.querySelector('#content h3');
+  if (h && h.textContent.includes('📅')) return h.textContent.replace('📅', '').trim();
+  return currentPeriod;
+}
+
+window.editAttendanceCell = editAttendanceCell;
+
+// ============ NAVIGATION ============
 const comingSoon = async () => {
   document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>';
 };
@@ -608,7 +796,8 @@ const comingSoon = async () => {
 const renderers = {
   overview: renderOverview, kpi: renderKPI, markdowns: renderMarkdowns,
   teams: renderTeams, agents: renderAgents,
-  attendance: comingSoon, daf: comingSoon, appointments: comingSoon, users: comingSoon,
+  attendance: renderAttendance,
+  daf: comingSoon, appointments: comingSoon, users: comingSoon,
 };
 
 async function navigate(page) {
@@ -664,17 +853,14 @@ document.getElementById('clearCacheBtn').addEventListener('click', () => {
     }
     populatePeriodSelect();
     setLoadingStatus(1, PREFETCH_ACTIONS.length + 1, 'Overview');
-
     const pending = PREFETCH_ACTIONS.filter(p => !clientCache.has(p.action, currentPeriod, p.extra || {}));
     const total = PREFETCH_ACTIONS.length + 1;
     let completed = 1;
-
     await Promise.all(pending.map(async (p) => {
       try { await api(p.action, p.extra || {}); } catch (e) { console.warn(e); }
       completed++;
       setLoadingStatus(completed, total, p.label);
     }));
-
     setLoadingStatus(total, total, '');
     await new Promise(r => setTimeout(r, 400));
     hideLoadingBar();
