@@ -689,9 +689,10 @@ async function renderAttendanceGrid() {
 
   grid.rows.forEach(r => {
     if (r.type === 'team') {
+      const teamBg = r.bg || '#1e293b';
       html += `
         <tr>
-          <td class="sticky left-0 bg-slate-800 text-white font-bold px-3 py-1 border border-slate-700" colspan="${1 + grid.dayHeaders.length + grid.summaryHeaders.length}">
+          <td style="background:${teamBg}; color:#fff; font-weight:bold;" class="sticky left-0 px-3 py-1 border border-slate-700" colspan="${1 + grid.dayHeaders.length + grid.summaryHeaders.length}">
             ${esc(r.team)}
           </td>
         </tr>
@@ -700,19 +701,19 @@ async function renderAttendanceGrid() {
     }
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="sticky left-0 bg-white z-10 px-3 py-1 font-medium text-slate-800 border border-slate-200 whitespace-nowrap">${esc(r.name)}</td>`;
-    r.cells.forEach((cellVal, ci) => {
-      const bg = cellVal === 'P' ? 'background:#d1fae5;' :
-                 cellVal === 'A' ? 'background:#fee2e2;' :
-                 cellVal === 'RD' ? 'background:#e5e7eb;' :
-                 cellVal === 'TB' ? 'background:#fef3c7;' :
-                 cellVal === 'VL' ? 'background:#dbeafe;' :
-                 cellVal === 'SL' ? 'background:#fce7f3;' :
-                 cellVal === 'LWP' ? 'background:#fed7aa;' :
-                 cellVal === 'UT' ? 'background:#fef9c3;' : '';
-      html += `<td class="att-cell" style="${bg}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(cellVal)}" onclick="editAttendanceCell(this)">${esc(cellVal)}</td>`;
+    r.cells.forEach((cell, ci) => {
+      const bg = cell.bg || '';
+      const fg = cell.fontColor || '';
+      const bold = cell.bold ? 'font-weight:600;' : '';
+      const style = `${bg ? 'background:' + bg + ';' : ''}${fg ? 'color:' + fg + ';' : ''}${bold}`;
+      html += `<td class="att-cell" style="${style}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(cell.value)}" onclick="editAttendanceCell(this)">${esc(cell.value)}</td>`;
     });
-    r.summary.forEach(s => {
-      html += `<td class="px-2 py-1 text-center font-semibold text-slate-700 border border-slate-200 bg-slate-50">${esc(s)}</td>`;
+    r.summary.forEach(cell => {
+      const bg = cell.bg || '#f8fafc';
+      const fg = cell.fontColor || '';
+      const bold = 'font-weight:600;';
+      const style = `background:${bg}; ${fg ? 'color:' + fg + ';' : ''}${bold}`;
+      html += `<td class="px-2 py-1 text-center border border-slate-200" style="${style}">${esc(cell.value)}</td>`;
     });
     html += `</tr>`;
   });
@@ -1036,6 +1037,20 @@ async function renderDAFGrid(which) {
     return;
   }
 
+  // Find column index for "Valid" (Raw Data only)
+  const validColIdx = grid.headers.findIndex(h => String(h || '').toLowerCase().trim() === 'valid');
+
+  // Display formatter: replace "true"/"false" with ✓/—
+  function fmtCell(v, colIdx) {
+    if (colIdx === validColIdx) {
+      const s = String(v || '').trim().toLowerCase();
+      if (s === 'true') return '✓';
+      if (s === 'false') return '—';
+      return esc(v) || '<span class="text-slate-300">—</span>';
+    }
+    return esc(v) || '<span class="text-slate-300">—</span>';
+  }
+
   let html = `
     <table class="w-full text-xs" style="border-collapse: collapse;">
       <thead class="bg-slate-100">
@@ -1051,7 +1066,8 @@ async function renderDAFGrid(which) {
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="px-2 py-1 text-slate-400 border border-slate-200 bg-slate-50">${r.rowNumber}</td>`;
     r.cells.forEach((v, ci) => {
-      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="editDAFCell(this)">${esc(v) || '<span class="text-slate-300">—</span>'}</td>`;
+      const display = fmtCell(v, ci);
+      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="editDAFCell(this)">${display}</td>`;
     });
     html += `</tr>`;
   });
@@ -1063,13 +1079,22 @@ async function renderDAFGrid(which) {
 
 async function editDAFCell(td) {
   if (td.dataset.editing === '1') return;
-  const currentValue = td.dataset.value || '';
+  const colIdx = Number(td.dataset.col);
+  const tabName = td.dataset.tab;
+  const isRawValid = tabName === 'Raw Data' && colIdx === 4;
+
+  const rawValue = td.dataset.value || '';
+  const currentValue = isRawValid
+    ? (String(rawValue).toLowerCase() === 'true' ? '✓' : '')
+    : rawValue;
+
   const originalHtml = td.innerHTML;
 
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'w-full text-xs px-1 py-0.5 border border-blue-400 rounded';
   input.value = currentValue;
+  if (isRawValid) input.placeholder = '✓ or leave blank';
   td.innerHTML = '';
   td.appendChild(input);
   td.dataset.editing = '1';
@@ -1077,9 +1102,13 @@ async function editDAFCell(td) {
   input.select();
 
   const commit = async () => {
-    const newValue = input.value;
+    let newValue = input.value.trim();
+    if (isRawValid) {
+      const truthy = ['✓', 'true', 'yes', 'y', '1', 'x'];
+      newValue = truthy.includes(newValue.toLowerCase()) ? 'TRUE' : 'FALSE';
+    }
     td.dataset.editing = '0';
-    if (newValue === currentValue) { td.innerHTML = originalHtml; return; }
+    if (newValue === rawValue) { td.innerHTML = originalHtml; return; }
     td.style.background = '#fef3c7';
     try {
       await apiPost({
@@ -1091,7 +1120,13 @@ async function editDAFCell(td) {
         email: EMAIL
       });
       td.dataset.value = newValue;
-      td.innerHTML = esc(newValue) || '<span class="text-slate-300">—</span>';
+      let display;
+      if (isRawValid) {
+        display = newValue === 'TRUE' ? '✓' : '—';
+      } else {
+        display = esc(newValue) || '<span class="text-slate-300">—</span>';
+      }
+      td.innerHTML = display;
       td.style.background = '#d1fae5';
       setTimeout(() => { td.style.background = ''; }, 1000);
       const container = td.closest('[id$="Grid"]');
