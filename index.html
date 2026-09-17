@@ -18,7 +18,6 @@
   .att-cell.saving { background: #fef3c7; }
   .att-cell.saved { background: #d1fae5; }
   .att-cell.error { background: #fee2e2; }
-  .team-separator { background: #1e293b; color: white; font-weight: bold; text-align: center; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -107,6 +106,7 @@ const PREFETCH_ACTIONS = [
   { action: 'markdowns',    label: 'Markdowns', extra: { scope: 'all' } },
   { action: 'teams',        label: 'Teams' },
   { action: 'agents',       label: 'Agents' },
+  { action: 'dafOverview',  label: 'DAF' },
 ];
 
 class SmartCache {
@@ -370,7 +370,6 @@ document.getElementById('agentModal').addEventListener('click', (e) => { if (e.t
 // ============ OVERVIEW ============
 async function renderOverview() {
   const data = await api('overviewFull', { period: currentPeriod });
-
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-4 gap-5 mb-8">
       <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
@@ -434,70 +433,31 @@ async function renderOverview() {
       </div>
     </div>
   `;
-
-  // KPI Trend chart
   const kpiTrend = data.trend || { months: [], avgKPI: [] };
   new Chart(document.getElementById('kpiTrendChart'), {
     type: 'line',
-    data: {
-      labels: kpiTrend.months,
-      datasets: [{
-        label: 'Team Avg KPI', data: kpiTrend.avgKPI,
-        borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)',
-        borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb'
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg KPI: ${round(ctx.parsed.y)}` } } },
-      scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'KPI Score' } }, x: { title: { display: true, text: 'Month' } } }
-    }
+    data: { labels: kpiTrend.months, datasets: [{ label: 'Team Avg KPI', data: kpiTrend.avgKPI, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb' }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg KPI: ${round(ctx.parsed.y)}` } } }, scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'KPI Score' } }, x: { title: { display: true, text: 'Month' } } } }
   });
-
-  // Category Top 5
   const cats = data.categoryTop5 || [];
   new Chart(document.getElementById('categoryChart'), {
     type: 'bar',
     data: { labels: cats.map(c => c.name), datasets: [{ label: 'Audits', data: cats.map(c => c.count), backgroundColor: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'], borderRadius: 6 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x} audits` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
   });
-
-  // AHT Trend
   const aht = data.ahtTrend || { months: [], avgAht: [] };
   new Chart(document.getElementById('ahtChart'), {
     type: 'line',
     data: { labels: aht.months, datasets: [{ label: 'Avg AHT (sec)', data: aht.avgAht, borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#dc2626' }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} sec` } } }, scales: { y: { beginAtZero: false, title: { display: true, text: 'Seconds' } }, x: { title: { display: true, text: 'Month' } } } }
   });
-
-  // Agents per Team — PIE
   const teams = data.agentsPerTeam || [];
   const pieColors = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#f59e0b', '#0891b2', '#db2777', '#65a30d', '#6366f1', '#ea580c', '#0ea5e9', '#14b8a6'];
   new Chart(document.getElementById('teamChart'), {
     type: 'pie',
-    data: {
-      labels: teams.map(t => t.teamLeader.split(',')[0] + ' (' + t.count + ')'),
-      datasets: [{
-        data: teams.map(t => t.count),
-        backgroundColor: pieColors.slice(0, teams.length),
-        borderWidth: 2, borderColor: '#ffffff'
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } },
-        tooltip: {
-          callbacks: {
-            title: (ctx) => teams[ctx[0].dataIndex].teamLeader,
-            label: (ctx) => `${ctx.parsed} agents`
-          }
-        }
-      }
-    }
+    data: { labels: teams.map(t => t.teamLeader.split(',')[0] + ' (' + t.count + ')'), datasets: [{ data: teams.map(t => t.count), backgroundColor: pieColors.slice(0, teams.length), borderWidth: 2, borderColor: '#ffffff' }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } }, tooltip: { callbacks: { title: (ctx) => teams[ctx[0].dataIndex].teamLeader, label: (ctx) => `${ctx.parsed} agents` } } } }
   });
-
-  // Assessment Trend
   const assess = data.assessmentTrend || { months: [], avgAssess: [] };
   new Chart(document.getElementById('assessChart'), {
     type: 'line',
@@ -634,25 +594,80 @@ async function renderAgents() {
 }
 
 // ============ ATTENDANCE ============
-async function renderAttendance() {
-  const grid = await api('attendanceGrid');
+let attendanceTabs = null;
+let currentAttendanceTabName = '';
 
-  if (grid.error) {
-    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`;
+async function renderAttendance() {
+  if (!attendanceTabs) {
+    try {
+      const resp = await fetch(`${API}?action=attendanceTabs&email=${EMAIL}`);
+      const json = await resp.json();
+      if (json.ok && json.data.tabs && json.data.tabs.length) {
+        attendanceTabs = json.data.tabs;
+        if (!currentAttendanceTabName || !attendanceTabs.includes(currentAttendanceTabName)) {
+          currentAttendanceTabName = attendanceTabs[0];
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load attendance tabs:', e);
+    }
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm mb-4 p-4 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <h3 class="font-semibold text-slate-900">📅 Attendance</h3>
+        <select id="attMonthSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
+          ${(attendanceTabs || []).map(t => `<option value="${esc(t)}" ${t === currentAttendanceTabName ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-500">Click any cell to edit</span>
+        <span id="saveStatus" class="text-xs font-medium"></span>
+      </div>
+    </div>
+    <div id="attendanceGridContainer">
+      <div class="text-center py-20 text-slate-400">Loading grid...</div>
+    </div>
+  `;
+
+  document.getElementById('attMonthSelect').addEventListener('change', async (e) => {
+    currentAttendanceTabName = e.target.value;
+    await renderAttendanceGrid();
+  });
+
+  await renderAttendanceGrid();
+}
+
+async function renderAttendanceGrid() {
+  const container = document.getElementById('attendanceGridContainer');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-20 text-slate-400">Loading grid...</div>';
+
+  if (!currentAttendanceTabName) {
+    container.innerHTML = '<div class="text-slate-400 text-center py-20">No attendance tabs available</div>';
     return;
   }
 
-  const cellCodes = grid.cellCodes || ['P', 'A', 'RD', 'TB', 'VL', 'SL', 'LWP', 'UT', 'Holiday', 'SLP'];
+  let grid;
+  try {
+    const params = new URLSearchParams({ action: 'attendanceGrid', email: EMAIL, tab: currentAttendanceTabName });
+    const res = await fetch(`${API}?${params}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'API error');
+    grid = json.data;
+  } catch (e) {
+    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  if (grid.error) {
+    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`;
+    return;
+  }
 
   let html = `
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-      <div class="p-4 border-b border-slate-200 flex items-center justify-between">
-        <h3 class="font-semibold text-slate-900">📅 ${esc(grid.tabName)}</h3>
-        <div class="flex items-center gap-3">
-          <span class="text-xs text-slate-500">Click any cell to edit</span>
-          <span id="saveStatus" class="text-xs font-medium"></span>
-        </div>
-      </div>
       <div class="overflow-x-auto">
         <table class="text-xs" style="border-collapse: collapse;">
           <thead class="bg-slate-100">
@@ -676,10 +691,8 @@ async function renderAttendance() {
       `;
       return;
     }
-
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="sticky left-0 bg-white z-10 px-3 py-1 font-medium text-slate-800 border border-slate-200 whitespace-nowrap">${esc(r.name)}</td>`;
-
     r.cells.forEach((cellVal, ci) => {
       const bg = cellVal === 'P' ? 'background:#d1fae5;' :
                  cellVal === 'A' ? 'background:#fee2e2;' :
@@ -691,41 +704,28 @@ async function renderAttendance() {
                  cellVal === 'UT' ? 'background:#fef9c3;' : '';
       html += `<td class="att-cell" style="${bg}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(cellVal)}" onclick="editAttendanceCell(this)">${esc(cellVal)}</td>`;
     });
-
     r.summary.forEach(s => {
       html += `<td class="px-2 py-1 text-center font-semibold text-slate-700 border border-slate-200 bg-slate-50">${esc(s)}</td>`;
     });
-
     html += `</tr>`;
   });
 
-  html += `
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('content').innerHTML = html;
+  html += `</tbody></table></div></div>`;
+  container.innerHTML = html;
 }
 
-// Inline cell editing
 async function editAttendanceCell(td) {
   if (td.dataset.editing === '1') return;
   const currentValue = td.dataset.value || '';
   const codes = ['P', 'A', 'RD', 'TB', 'VL', 'SL', 'LWP', 'UT', 'Holiday', 'SLP', ''];
-
-  // Build a small dropdown
   const select = document.createElement('select');
   select.className = 'w-full text-xs';
   codes.forEach(c => {
     const opt = document.createElement('option');
-    opt.value = c;
-    opt.textContent = c || '—';
+    opt.value = c; opt.textContent = c || '—';
     if (c === currentValue) opt.selected = true;
     select.appendChild(opt);
   });
-
   const original = td.innerHTML;
   td.innerHTML = '';
   td.appendChild(select);
@@ -735,58 +735,172 @@ async function editAttendanceCell(td) {
   const commit = async () => {
     const newValue = select.value;
     td.dataset.editing = '0';
-    if (newValue === currentValue) {
-      td.innerHTML = original;
-      return;
-    }
+    if (newValue === currentValue) { td.innerHTML = original; return; }
     td.classList.add('saving');
     td.innerHTML = newValue || '—';
     try {
-      await apiPost({
-        action: 'updateAttendanceCell',
-        tabName: currentAttendanceTab(),
-        rowNumber: td.dataset.row,
-        colIndex: td.dataset.col,
-        value: newValue,
-        email: EMAIL
-      });
+      await apiPost({ action: 'updateAttendanceCell', tabName: currentAttendanceTabName, rowNumber: td.dataset.row, colIndex: td.dataset.col, value: newValue, email: EMAIL });
       td.dataset.value = newValue;
       td.classList.remove('saving');
       td.classList.add('saved');
-      document.getElementById('saveStatus').textContent = 'Saved';
-      document.getElementById('saveStatus').className = 'text-xs font-medium text-green-600';
-      setTimeout(() => {
-        td.classList.remove('saved');
-        const st = document.getElementById('saveStatus');
-        if (st) st.textContent = '';
-      }, 1500);
-      // Invalidate attendance cache so next visit refetches
-      clientCache.cache.forEach((v, k) => { if (k.startsWith('attendanceGrid|')) clientCache.cache.delete(k); });
+      const st = document.getElementById('saveStatus');
+      if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; }
+      setTimeout(() => { td.classList.remove('saved'); if (st) st.textContent = ''; }, 1500);
     } catch (e) {
       td.classList.remove('saving');
       td.classList.add('error');
       td.innerHTML = original;
-      document.getElementById('saveStatus').textContent = 'Save failed: ' + e.message;
-      document.getElementById('saveStatus').className = 'text-xs font-medium text-red-600';
+      const st = document.getElementById('saveStatus');
+      if (st) { st.textContent = 'Save failed: ' + e.message; st.className = 'text-xs font-medium text-red-600'; }
     }
   };
-
   select.addEventListener('change', commit);
   select.addEventListener('blur', commit);
   select.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') { select.blur(); }
+    if (ev.key === 'Enter') select.blur();
     if (ev.key === 'Escape') { td.dataset.editing = '0'; td.innerHTML = original; }
   });
 }
+window.editAttendanceCell = editAttendanceCell;
 
-function currentAttendanceTab() {
-  // Read the tab name from the rendered heading
-  const h = document.querySelector('#content h3');
-  if (h && h.textContent.includes('📅')) return h.textContent.replace('📅', '').trim();
-  return currentPeriod;
+// ============ DAF TRACKER ============
+async function renderDAF() {
+  let data;
+  try {
+    data = await api('dafOverview', { period: currentPeriod });
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load DAF: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900">📋 DAF Tracker</h2>
+        <p class="text-xs text-slate-500 mt-1">Only incidents within the last 6 months are counted. Current cutoff: <strong>${esc(data.validityCutoff || '')}</strong></p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-4 gap-5 mb-8">
+      <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl p-5 shadow-sm">
+        <div class="text-red-100 text-xs font-medium mb-1">TOTAL POINTS</div>
+        <div class="text-3xl font-bold">${round(data.totalPoints)}</div>
+        <div class="text-red-100 text-xs mt-1">Valid records only</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="text-slate-500 text-xs font-medium mb-1">INCIDENTS</div>
+        <div class="text-3xl font-bold text-slate-900">${data.totalIncidents}</div>
+        <div class="text-slate-400 text-xs mt-1">Raw Data entries</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="text-slate-500 text-xs font-medium mb-1">IR TRACKER</div>
+        <div class="text-3xl font-bold text-slate-900">${data.totalIRs}</div>
+        <div class="text-slate-400 text-xs mt-1">IRs filed</div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="text-slate-500 text-xs font-medium mb-1">AGENTS AFFECTED</div>
+        <div class="text-3xl font-bold text-slate-900">${data.agentCount}</div>
+        <div class="text-slate-400 text-xs mt-1">With valid records</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-5 mb-6">
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-slate-900">📈 Daily Incident Trend</h3>
+          <span class="text-xs text-slate-400">${esc(currentPeriod)}</span>
+        </div>
+        <div class="h-72"><canvas id="dafDailyChart"></canvas></div>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-slate-900">🎯 Top 5 Infractions</h3>
+          <span class="text-xs text-slate-400">${esc(currentPeriod)}</span>
+        </div>
+        <div class="h-72"><canvas id="dafInfractionsChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-slate-900">📋 DAF Summary per Agent</h3>
+        <span class="text-xs text-slate-400">${data.summary.length} agents with valid records</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th class="text-left px-4 py-3 font-semibold text-slate-600">#</th>
+              <th class="text-left px-4 py-3 font-semibold text-slate-600">Agent</th>
+              <th class="text-left px-4 py-3 font-semibold text-slate-600">Immediate Head</th>
+              <th class="text-right px-4 py-3 font-semibold text-slate-600">Points</th>
+              <th class="text-right px-4 py-3 font-semibold text-slate-600">Incidents</th>
+              <th class="text-right px-4 py-3 font-semibold text-slate-600">IRs</th>
+              <th class="text-left px-4 py-3 font-semibold text-slate-600">Last Incident</th>
+              <th class="text-center px-4 py-3 font-semibold text-slate-600">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.summary.map((s, i) => `
+              <tr class="border-b border-slate-100 hover:bg-slate-50">
+                <td class="px-4 py-2 text-slate-400">${i + 1}</td>
+                <td class="px-4 py-2 font-medium text-slate-800">${esc(s.name)}</td>
+                <td class="px-4 py-2 text-slate-500 text-xs">${esc(s.team || '—')}</td>
+                <td class="px-4 py-2 text-right font-semibold text-red-600">${s.points}</td>
+                <td class="px-4 py-2 text-right text-slate-700">${s.incidents}</td>
+                <td class="px-4 py-2 text-right text-slate-700">${s.irs}</td>
+                <td class="px-4 py-2 text-xs text-slate-500">${esc(s.lastIncident || '—')}</td>
+                <td class="px-4 py-2 text-center">
+                  <button onclick="toggleDAFDetails(${i})" class="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700">View</button>
+                </td>
+              </tr>
+              <tr id="dafDetails-${i}" class="hidden">
+                <td colspan="8" class="bg-slate-50 px-6 py-4">
+                  ${s.irDetails && s.irDetails.length > 0 ? `
+                    <div class="space-y-2">
+                      <div class="text-xs font-semibold text-slate-500 uppercase mb-2">IR Records</div>
+                      ${s.irDetails.map(d => `
+                        <div class="bg-white rounded border border-slate-200 p-3 text-xs">
+                          <div class="flex justify-between mb-1">
+                            <span class="font-semibold text-slate-800">${esc(d.violation || 'Violation')}</span>
+                            <span class="text-slate-400">${esc(d.date)}</span>
+                          </div>
+                          ${d.action ? `<div class="text-slate-600 mt-1"><strong>Action:</strong> ${esc(d.action)}</div>` : ''}
+                          ${d.details ? `<div class="text-slate-600 mt-1"><strong>Details:</strong> ${esc(d.details)}</div>` : ''}
+                          ${d.remarks ? `<div class="text-slate-500 mt-1 italic">${esc(d.remarks)}</div>` : ''}
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : '<div class="text-xs text-slate-400">No IR records for this agent.</div>'}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const daily = data.dailyTrend || [];
+  new Chart(document.getElementById('dafDailyChart'), {
+    type: 'line',
+    data: { labels: daily.map(d => d.date.slice(5)), datasets: [{ label: 'Incidents', data: daily.map(d => d.count), borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.15)', borderWidth: 3, fill: true, tension: 0.3, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#dc2626' }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} incidents on ${daily[ctx.dataIndex].date}` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Incidents' } }, x: { title: { display: true, text: 'Date (MM-DD)' } } } }
+  });
+
+  const infr = data.topInfractions || [];
+  new Chart(document.getElementById('dafInfractionsChart'), {
+    type: 'bar',
+    data: { labels: infr.map(i => i.name.length > 30 ? i.name.slice(0, 27) + '…' : i.name), datasets: [{ label: 'Count', data: infr.map(i => i.count), backgroundColor: ['#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5'], borderRadius: 6 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => infr[ctx[0].dataIndex].name, label: (ctx) => `${ctx.parsed.x} incidents` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
+  });
 }
 
-window.editAttendanceCell = editAttendanceCell;
+function toggleDAFDetails(idx) {
+  const row = document.getElementById('dafDetails-' + idx);
+  if (row) row.classList.toggle('hidden');
+}
+window.toggleDAFDetails = toggleDAFDetails;
 
 // ============ NAVIGATION ============
 const comingSoon = async () => {
@@ -797,7 +911,8 @@ const renderers = {
   overview: renderOverview, kpi: renderKPI, markdowns: renderMarkdowns,
   teams: renderTeams, agents: renderAgents,
   attendance: renderAttendance,
-  daf: comingSoon, appointments: comingSoon, users: comingSoon,
+  daf: renderDAF,
+  appointments: comingSoon, users: comingSoon,
 };
 
 async function navigate(page) {
