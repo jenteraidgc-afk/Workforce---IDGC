@@ -109,7 +109,6 @@ const PREFETCH_ACTIONS = [
   { action: 'agents',       label: 'Agents' },
 ];
 
-// ============ DATA CACHE (JSON) ============
 class SmartCache {
   constructor() { this.cache = new Map(); this.hits = 0; this.misses = 0; this.loadFromLocalStorage(); }
   _key(a, p, e) { return `${a}|${p}|${JSON.stringify(e || {})}`; }
@@ -150,7 +149,6 @@ class SmartCache {
 }
 const clientCache = new SmartCache();
 
-// ============ PAGE CACHE (RENDERED HTML + CHARTS) ============
 const pageCache = new Map();
 let chartConfigs = {};
 const liveCharts = [];
@@ -1510,14 +1508,12 @@ async function navigate(page) {
   const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
   document.getElementById('pageTitle').textContent = labels[page] || page;
 
-  // Snapshot the page we're LEAVING (previousPage, which still matches the DOM)
   if (previousPage && previousPage !== page) {
     snapshotSpecificPage(previousPage);
   }
 
   currentPage = page;
 
-  // Try restoring from page cache first
   if (pageCache.has(pageCacheKey(page, currentPeriod))) {
     restoreFromSnapshot(page);
     const stats = clientCache.getStats();
@@ -1525,7 +1521,6 @@ async function navigate(page) {
     return;
   }
 
-  // Cache miss — do the full fetch/render
   const simpleFetches = { kpi: 'kpi', markdowns: 'markdowns', teams: 'teams', agents: 'agents', overview: 'overviewFull' };
   const cacheKey = simpleFetches[page];
   const alreadyCached = cacheKey ? clientCache.has(cacheKey, currentPeriod, page === 'markdowns' ? { scope: 'all' } : {}) : true;
@@ -1535,10 +1530,18 @@ async function navigate(page) {
     destroyLiveCharts();
     chartConfigs = {};
     await renderers[page]();
+    // FIX: only snapshot if the user hasn't already navigated away.
+    // Use a captured `page` value, not `currentPage`, so late timers
+    // can't write the wrong page's HTML into the cache.
     if (page !== 'attendance' && page !== 'daf') {
-      snapshotCurrentPage();
+      if (currentPage === page) snapshotSpecificPage(page);
     } else {
-      setTimeout(() => { snapshotCurrentPage(); }, 1200);
+      const pageAtSnapshotTime = page;
+      setTimeout(() => {
+        if (currentPage === pageAtSnapshotTime) {
+          snapshotSpecificPage(pageAtSnapshotTime);
+        }
+      }, 1200);
     }
     if (!alreadyCached) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
     const stats = clientCache.getStats();
