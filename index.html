@@ -151,26 +151,20 @@ class SmartCache {
 const clientCache = new SmartCache();
 
 // ============ PAGE CACHE (RENDERED HTML + CHARTS) ============
-// Stores the full #content HTML plus all Chart.js configs so we can
-// restore a previously-visited page instantly without re-fetching.
-const pageCache = new Map();   // key: `${page}|${period}` → { html, charts, scrollY, savedAt }
-let chartConfigs = {};         // live chart configs for the currently-rendering page
-const liveCharts = [];         // live Chart.js instances (for destroying on re-render)
+const pageCache = new Map();
+let chartConfigs = {};
+const liveCharts = [];
 
 function pageCacheKey(page, period) { return `${page}|${period}`; }
 
-function stashChart(id, config) {
-  chartConfigs[id] = config;
-}
+function stashChart(id, config) { chartConfigs[id] = config; }
 
-// Destroy all live Chart.js instances to prevent leaks before replacing HTML
 function destroyLiveCharts() {
   while (liveCharts.length) {
     try { liveCharts.pop().destroy(); } catch (e) {}
   }
 }
 
-// Replay stored chart configs after restoring cached HTML
 function replayCharts(configs) {
   if (!configs) return;
   Object.keys(configs).forEach(id => {
@@ -182,7 +176,6 @@ function replayCharts(configs) {
 }
 
 function invalidatePage(page) {
-  // Invalidate for all periods of that page
   [...pageCache.keys()].forEach(k => { if (k.startsWith(page + '|')) pageCache.delete(k); });
 }
 
@@ -688,7 +681,7 @@ async function renderAttendance() {
   document.getElementById('attMonthSelect').addEventListener('change', async (e) => {
     currentAttendanceTabName = e.target.value;
     await renderAttendanceGrid();
-    snapshotCurrentPage();  // re-snapshot after grid loads
+    snapshotCurrentPage();
   });
 
   await renderAttendanceGrid();
@@ -802,7 +795,6 @@ async function editAttendanceCell(td) {
       const st = document.getElementById('saveStatus');
       if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; }
       setTimeout(() => { td.classList.remove('saved'); if (st) st.textContent = ''; }, 1500);
-      // Invalidate this page in the render cache so next visit re-fetches
       invalidatePage('attendance');
     } catch (e) {
       td.classList.remove('saving');
@@ -1437,17 +1429,21 @@ window.clearSelection = clearSelection;
 window.selectAllVisible = selectAllVisible;
 
 // ============ PAGE SNAPSHOT / RESTORE ============
-function snapshotCurrentPage() {
-  if (!currentPage) return;
+function snapshotSpecificPage(page) {
+  if (!page) return;
   const el = document.getElementById('content');
   if (!el) return;
-  const key = pageCacheKey(currentPage, currentPeriod);
+  const key = pageCacheKey(page, currentPeriod);
   pageCache.set(key, {
     html: el.innerHTML,
     charts: JSON.parse(JSON.stringify(chartConfigs)),
     scrollY: window.scrollY,
     savedAt: Date.now()
   });
+}
+
+function snapshotCurrentPage() {
+  snapshotSpecificPage(currentPage);
 }
 
 function restoreFromSnapshot(page) {
@@ -1459,20 +1455,16 @@ function restoreFromSnapshot(page) {
   const el = document.getElementById('content');
   el.innerHTML = snapshot.html;
 
-  // Rebuild charts using stored configs
   chartConfigs = snapshot.charts || {};
   replayCharts(chartConfigs);
 
-  // Restore scroll position after a tick so layout settles
   requestAnimationFrame(() => { window.scrollTo(0, snapshot.scrollY || 0); });
 
-  // Rebind any event listeners that were attached programmatically
   rebindPageEvents(page);
   return true;
 }
 
 function rebindPageEvents(page) {
-  // Attendance: month dropdown
   if (page === 'attendance') {
     const sel = document.getElementById('attMonthSelect');
     if (sel) {
@@ -1483,7 +1475,6 @@ function rebindPageEvents(page) {
       });
     }
   }
-  // DAF: filter dropdowns
   if (page === 'daf') {
     const fm = document.getElementById('dafFilterMode');
     if (fm) fm.addEventListener('change', (e) => { dafFilterMode = e.target.value; invalidatePage('daf'); renderDAF(); });
@@ -1514,16 +1505,17 @@ const renderers = {
 
 async function navigate(page) {
   const previousPage = currentPage;
-  currentPage = page;
 
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
   document.getElementById('pageTitle').textContent = labels[page] || page;
 
-  // Snapshot the page we're leaving BEFORE switching away
+  // Snapshot the page we're LEAVING (previousPage, which still matches the DOM)
   if (previousPage && previousPage !== page) {
-    snapshotCurrentPage();
+    snapshotSpecificPage(previousPage);
   }
+
+  currentPage = page;
 
   // Try restoring from page cache first
   if (pageCache.has(pageCacheKey(page, currentPeriod))) {
@@ -1543,11 +1535,9 @@ async function navigate(page) {
     destroyLiveCharts();
     chartConfigs = {};
     await renderers[page]();
-    // For pages with async sub-renders (attendance grid, daf grids), snapshot happens later
     if (page !== 'attendance' && page !== 'daf') {
       snapshotCurrentPage();
     } else {
-      // Wait a tick for the async grid fetches to complete, then snapshot
       setTimeout(() => { snapshotCurrentPage(); }, 1200);
     }
     if (!alreadyCached) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
