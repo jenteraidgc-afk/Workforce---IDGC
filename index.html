@@ -18,6 +18,7 @@
   .att-cell.saving { background: #fef3c7; }
   .att-cell.saved { background: #d1fae5; }
   .att-cell.error { background: #fee2e2; }
+  .daf-row-selected { background: #dbeafe !important; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -346,7 +347,7 @@ async function openAgentProfile(name) {
               <tr class="bg-slate-50 border-t-2 border-slate-300">
                 <td class="px-3 py-2 font-bold text-slate-900" colspan="3">Total Evaluations: ${data.criteriaTable.totalEvaluations}</td>
                 <td class="px-3 py-2"></td>
-                <td class="px-3 py-2 text-right font-bold text-slate-900">Avg: ${data.criteriaTable.avgAccuracy.toFixed(2)}%</td>
+                <td class="px-3 py-2 text-right font-bold text-slate-900">Avg: ${data.criteriaTable.totalEvaluations ? data.criteriaTable.avgAccuracy.toFixed(2) : '0.00'}%</td>
               </tr>
             </tbody>
           </table>
@@ -1006,12 +1007,20 @@ function toggleDAFDetails(idx) {
 }
 window.toggleDAFDetails = toggleDAFDetails;
 
-// ============ DAF GHOST ROW ============
+// ============ DAF GHOST ROW + MULTI-SELECT HIDE ============
 const ghostRowState = {
   raw: { active: false, values: [] },
   ir:  { active: false, values: [] }
 };
 const gridHeaders = { raw: [], ir: [] };
+// Hidden rows per grid (frontend-only)
+const hiddenRows = { raw: new Set(), ir: new Set() };
+// Selected rows per grid (for bulk hide)
+const selectedRows = { raw: new Set(), ir: new Set() };
+// Last clicked row (for Shift+Click range selection)
+const lastClickedRow = { raw: null, ir: null };
+// Whether "show hidden" is currently on
+const showHidden = { raw: false, ir: false };
 
 function activateGhostRow(which) {
   ghostRowState[which].active = true;
@@ -1060,6 +1069,68 @@ async function saveGhostRow(which) {
   }
 }
 
+// Toggle a single row's selection. Shift+Click selects a range.
+function toggleRowSelection(which, rowNumber, shiftKey) {
+  const sel = selectedRows[which];
+  const anchor = lastClickedRow[which];
+
+  if (shiftKey && anchor !== null) {
+    // Range select between anchor and rowNumber (based on visible order)
+    const visible = visibleRowNumbers[which];
+    const a = visible.indexOf(anchor);
+    const b = visible.indexOf(rowNumber);
+    if (a !== -1 && b !== -1) {
+      const [start, end] = a < b ? [a, b] : [b, a];
+      for (let i = start; i <= end; i++) sel.add(visible[i]);
+      renderDAFGrid(which);
+      return;
+    }
+  }
+
+  if (sel.has(rowNumber)) sel.delete(rowNumber);
+  else sel.add(rowNumber);
+  lastClickedRow[which] = rowNumber;
+  renderDAFGrid(which);
+}
+
+// Cache of currently visible row numbers, so Shift+Click can compute ranges
+const visibleRowNumbers = { raw: [], ir: [] };
+
+function hideSelected(which) {
+  const sel = selectedRows[which];
+  if (sel.size === 0) return;
+  sel.forEach(rn => hiddenRows[which].add(rn));
+  sel.clear();
+  lastClickedRow[which] = null;
+  renderDAFGrid(which);
+}
+
+function toggleShowHidden(which) {
+  showHidden[which] = !showHidden[which];
+  renderDAFGrid(which);
+}
+
+function unhideAll(which) {
+  hiddenRows[which].clear();
+  showHidden[which] = false;
+  renderDAFGrid(which);
+}
+
+function clearSelection(which) {
+  selectedRows[which].clear();
+  lastClickedRow[which] = null;
+  renderDAFGrid(which);
+}
+
+function selectAllVisible(which) {
+  const all = visibleRowNumbers[which];
+  const sel = selectedRows[which];
+  const allSelected = all.length > 0 && all.every(rn => sel.has(rn));
+  if (allSelected) sel.clear();
+  else all.forEach(rn => sel.add(rn));
+  renderDAFGrid(which);
+}
+
 async function renderDAFGrid(which) {
   const containerId = which === 'raw' ? 'dafRawGrid' : 'dafIRGrid';
   const saveStatusId = which === 'raw' ? 'dafRawSaveStatus' : 'dafIRSaveStatus';
@@ -1098,14 +1169,51 @@ async function renderDAFGrid(which) {
     return esc(v) || '<span class="text-slate-300">—</span>';
   }
 
-  let html = `
-    <div class="flex items-center justify-between mb-2">
-      <div class="text-xs text-slate-500">Click a cell to edit · Click "+ Add Row" to append a new entry</div>
-      <button onclick="activateGhostRow('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition">+ Add Row</button>
+  const allRows = grid.rows || [];
+  const hidden = hiddenRows[which];
+  const show = showHidden[which];
+
+  // Determine which rows to display
+  const displayedRows = allRows.filter(r => {
+    const isHidden = hidden.has(r.rowNumber);
+    return show ? true : !isHidden;
+  });
+
+  // Track visible row numbers for Shift+Click range selection
+  visibleRowNumbers[which] = displayedRows.map(r => r.rowNumber);
+
+  // Prune selections & hidden state for rows no longer present
+  const presentRows = new Set(allRows.map(r => r.rowNumber));
+  selectedRows[which].forEach(rn => { if (!presentRows.has(rn)) selectedRows[which].delete(rn); });
+  hidden.forEach(rn => { if (!presentRows.has(rn)) hidden.delete(rn); });
+
+  const hiddenCount = hidden.size;
+  const selectedCount = selectedRows[which].size;
+  const allVisibleSelected = visibleRowNumbers[which].length > 0 &&
+    visibleRowNumbers[which].every(rn => selectedRows[which].has(rn));
+
+  let toolbarHtml = `
+    <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+      <div class="text-xs text-slate-500">
+        Check rows to select · <strong>Shift+Click</strong> for range · <strong>Ctrl/Cmd+Click</strong> to add
+      </div>
+      <div class="flex items-center gap-2">
+        ${selectedCount > 0 ? `<button onclick="clearSelection('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700">Clear (${selectedCount})</button>` : ''}
+        ${selectedCount > 0 ? `<button onclick="hideSelected('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium">Hide selected (${selectedCount})</button>` : ''}
+        ${hiddenCount > 0 ? `<button onclick="toggleShowHidden('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-medium">${show ? 'Hide' : 'Show'} hidden (${hiddenCount})</button>` : ''}
+        ${hiddenCount > 0 ? `<button onclick="unhideAll('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700">Reset</button>` : ''}
+        <button onclick="activateGhostRow('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition">+ Add Row</button>
+      </div>
     </div>
+  `;
+
+  let html = toolbarHtml + `
     <table class="w-full text-xs" style="border-collapse: collapse;">
       <thead class="bg-slate-100">
         <tr>
+          <th class="px-2 py-2 border border-slate-200 bg-slate-200" style="width:32px;">
+            <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="selectAllVisible('${which}')" title="Select all" style="cursor:pointer;" />
+          </th>
           <th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 bg-slate-200">Row</th>
           ${grid.headers.map(h => `<th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 whitespace-nowrap">${esc(h)}</th>`).join('')}
         </tr>
@@ -1113,22 +1221,32 @@ async function renderDAFGrid(which) {
       <tbody>
   `;
 
-  if (!grid.rows || grid.rows.length === 0) {
-    html += `<tr><td colspan="${grid.headers.length + 1}" class="px-2 py-4 text-slate-400 text-center">No rows match the current filter.</td></tr>`;
+  if (displayedRows.length === 0) {
+    const msg = allRows.length === 0
+      ? 'No rows match the current filter.'
+      : (hiddenCount > 0 && !show ? 'All rows in this filter are hidden. Click "Show hidden" to bring them back.' : 'No rows to display.');
+    html += `<tr><td colspan="${grid.headers.length + 2}" class="px-2 py-4 text-slate-400 text-center">${msg}</td></tr>`;
   }
 
-  (grid.rows || []).forEach(r => {
-    html += `<tr class="hover:bg-slate-50">`;
+  displayedRows.forEach(r => {
+    const isHidden = hidden.has(r.rowNumber);
+    const isSelected = selectedRows[which].has(r.rowNumber);
+    const rowClass = isSelected ? 'bg-blue-100' : (isHidden ? 'bg-slate-100 opacity-60' : 'hover:bg-slate-50');
+    html += `<tr class="${rowClass}">`;
+    html += `<td class="px-2 py-1 text-center border border-slate-200 bg-slate-50" style="width:32px;">
+      <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleRowSelection('${which}', ${r.rowNumber}, event.shiftKey)" style="cursor:pointer;" />
+    </td>`;
     html += `<td class="px-2 py-1 text-slate-400 border border-slate-200 bg-slate-50">${r.rowNumber}</td>`;
     r.cells.forEach((v, ci) => {
       const display = fmtCell(v, ci);
-      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="editDAFCell(this)">${display}</td>`;
+      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="event.stopPropagation(); editDAFCell(this)">${display}</td>`;
     });
     html += `</tr>`;
   });
 
   if (ghostRowState[which].active) {
     html += `<tr style="background:#eff6ff;" id="ghostRow-${which}">`;
+    html += `<td class="px-2 py-1 border border-blue-200 bg-blue-50"></td>`;
     html += `<td class="px-2 py-1 text-blue-600 font-semibold border border-blue-200 text-center">NEW</td>`;
     grid.headers.forEach((h, ci) => {
       const val = ghostRowState[which].values[ci] || '';
@@ -1148,13 +1266,11 @@ async function renderDAFGrid(which) {
     });
     html += `</tr>`;
 
-    html += `<tr style="background:#eff6ff;"><td colspan="${grid.headers.length + 1}" class="px-2 py-2 text-right border border-blue-200">
+    html += `<tr style="background:#eff6ff;"><td colspan="${grid.headers.length + 2}" class="px-2 py-2 text-right border border-blue-200">
       <span class="text-xs text-blue-600 mr-3">Press <strong>Enter</strong> in the last cell to save, <strong>Esc</strong> to cancel</span>
       <button onclick="cancelGhostRow('${which}')" class="text-xs px-3 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 mr-2">✗ Cancel</button>
       <button onclick="saveGhostRow('${which}')" class="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium">✓ Save</button>
     </td></tr>`;
-  } else {
-    html += `<tr><td colspan="${grid.headers.length + 1}" class="px-2 py-2 text-center border border-dashed border-slate-300 text-slate-400 text-xs cursor-pointer hover:bg-slate-50" onclick="activateGhostRow('${which}')">+ Add new row</td></tr>`;
   }
 
   html += `</tbody></table>`;
@@ -1273,6 +1389,12 @@ window.cancelGhostRow = cancelGhostRow;
 window.setGhostValue = setGhostValue;
 window.saveGhostRow = saveGhostRow;
 window.handleGhostKey = handleGhostKey;
+window.toggleRowSelection = toggleRowSelection;
+window.hideSelected = hideSelected;
+window.toggleShowHidden = toggleShowHidden;
+window.unhideAll = unhideAll;
+window.clearSelection = clearSelection;
+window.selectAllVisible = selectAllVisible;
 
 // ============ NAVIGATION ============
 const comingSoon = async () => {
