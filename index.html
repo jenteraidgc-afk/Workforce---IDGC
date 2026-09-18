@@ -641,22 +641,28 @@ async function renderAgents() {
 let attendanceTabs = null;
 let currentAttendanceTabName = '';
 
+async function loadAttendanceTabs(force) {
+  if (attendanceTabs && attendanceTabs.length && !force) return;
+  // cache-buster: prevents stale 404-era responses from being reused
+  const params = new URLSearchParams({ action: 'attendanceTabs', email: EMAIL, _t: Date.now() });
+  const res = await fetch(`${API}?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  attendanceTabs = (json.data && json.data.tabs) || [];
+  // Prefer the tab that matches the current period (e.g. "August 2026")
+  const match = attendanceTabs.find(t => t === currentPeriod);
+  if (match) currentAttendanceTabName = match;
+  else if (!currentAttendanceTabName || !attendanceTabs.includes(currentAttendanceTabName)) {
+    currentAttendanceTabName = attendanceTabs[0] || '';
+  }
+}
+
 async function renderAttendance() {
   chartConfigs = {};
-  if (!attendanceTabs) {
-    try {
-      const resp = await fetch(`${API}?action=attendanceTabs&email=${EMAIL}`);
-      const json = await resp.json();
-      if (json.ok && json.data.tabs && json.data.tabs.length) {
-        attendanceTabs = json.data.tabs;
-        if (!currentAttendanceTabName || !attendanceTabs.includes(currentAttendanceTabName)) {
-          currentAttendanceTabName = attendanceTabs[0];
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load attendance tabs:', e);
-    }
-  }
+  let loadErr = null;
+  try { await loadAttendanceTabs(false); }
+  catch (e) { loadErr = e; console.error('attendanceTabs fetch failed:', e); }
 
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm mb-4 p-4 flex items-center justify-between">
@@ -671,12 +677,14 @@ async function renderAttendance() {
         <span id="saveStatus" class="text-xs font-medium"></span>
       </div>
     </div>
+    ${loadErr ? `<div class="bg-red-50 text-red-700 p-4 rounded-lg mb-4">Failed to load attendance tabs: ${esc(loadErr.message)}</div>` : ''}
     <div id="attendanceGridContainer">
       <div class="text-center py-20 text-slate-400">Loading grid...</div>
     </div>
   `;
 
-  document.getElementById('attMonthSelect').addEventListener('change', async (e) => {
+  const sel = document.getElementById('attMonthSelect');
+  if (sel) sel.addEventListener('change', async (e) => {
     currentAttendanceTabName = e.target.value;
     await renderAttendanceGrid();
     snapshotCurrentPage();
@@ -1514,6 +1522,7 @@ async function navigate(page) {
 
   currentPage = page;
 
+  // Try restoring from page cache first
   if (pageCache.has(pageCacheKey(page, currentPeriod))) {
     restoreFromSnapshot(page);
     const stats = clientCache.getStats();
@@ -1521,18 +1530,20 @@ async function navigate(page) {
     return;
   }
 
+  // Cache miss — do the full fetch/render
   const simpleFetches = { kpi: 'kpi', markdowns: 'markdowns', teams: 'teams', agents: 'agents', overview: 'overviewFull' };
   const cacheKey = simpleFetches[page];
   const alreadyCached = cacheKey ? clientCache.has(cacheKey, currentPeriod, page === 'markdowns' ? { scope: 'all' } : {}) : true;
-  if (!alreadyCached) { showLoadingBar(); setLoadingStatus(0, 1, labels[page]); }
+  // Attendance and DAF always show the loading bar — their fetches aren't tracked
+  // by clientCache, and they take the longest to render.
+  const isSlowPage = (page === 'attendance' || page === 'daf');
+  const showBar = isSlowPage || !alreadyCached;
+  if (showBar) { showLoadingBar(); setLoadingStatus(0, 1, labels[page]); }
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
   try {
     destroyLiveCharts();
     chartConfigs = {};
     await renderers[page]();
-    // FIX: only snapshot if the user hasn't already navigated away.
-    // Use a captured `page` value, not `currentPage`, so late timers
-    // can't write the wrong page's HTML into the cache.
     if (page !== 'attendance' && page !== 'daf') {
       if (currentPage === page) snapshotSpecificPage(page);
     } else {
@@ -1543,11 +1554,11 @@ async function navigate(page) {
         }
       }, 1200);
     }
-    if (!alreadyCached) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
+    if (showBar) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
     const stats = clientCache.getStats();
     document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
   } catch (e) {
-    if (!alreadyCached) hideLoadingBar();
+    if (showBar) hideLoadingBar();
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
   }
 }
