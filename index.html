@@ -19,6 +19,7 @@
   .att-cell.saved { background: #d1fae5; }
   .att-cell.error { background: #fee2e2; }
   .daf-row-selected { background: #dbeafe !important; }
+  #toast { transition: opacity 0.25s ease, transform 0.25s ease; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -91,6 +92,10 @@
   </div>
 </div>
 
+<div id="toast" class="hidden fixed top-6 right-6 z-[60] bg-white border border-green-200 text-green-700 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2">
+  <span>✓</span><span id="toastText">Loaded</span>
+</div>
+
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
 const EMAIL = 'jentera.idgc@gmail.com';
@@ -149,35 +154,33 @@ class SmartCache {
 }
 const clientCache = new SmartCache();
 
-const pageCache = new Map();
-let chartConfigs = {};
-const liveCharts = [];
-
-function pageCacheKey(page, period) { return `${page}|${period}`; }
-
-function stashChart(id, config) { chartConfigs[id] = config; }
-
-function destroyLiveCharts() {
-  while (liveCharts.length) {
-    try { liveCharts.pop().destroy(); } catch (e) {}
-  }
-}
-
-function replayCharts(configs) {
-  if (!configs) return;
-  Object.keys(configs).forEach(id => {
+// ============ CHART MANAGEMENT ============
+// Each render destroys only its own charts. No globals, no page cache.
+function destroyCharts(ids) {
+  ids.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
-    const cfg = configs[id];
-    try { liveCharts.push(new Chart(el, cfg)); } catch (e) { console.warn('Chart replay failed:', id, e); }
+    const existing = Chart.getChart(el);
+    if (existing) existing.destroy();
   });
 }
 
-function invalidatePage(page) {
-  [...pageCache.keys()].forEach(k => { if (k.startsWith(page + '|')) pageCache.delete(k); });
+// ============ TOAST ============
+let toastTimer = null;
+function showToast(label) {
+  const t = document.getElementById('toast');
+  const txt = document.getElementById('toastText');
+  if (!t || !txt) return;
+  txt.textContent = label + ' loaded';
+  t.classList.remove('hidden');
+  requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.style.opacity = '0';
+    t.style.transform = 'translateY(-8px)';
+    setTimeout(() => { t.classList.add('hidden'); t.style.opacity = ''; t.style.transform = ''; }, 250);
+  }, 1500);
 }
-
-function invalidateAllPages() { pageCache.clear(); }
 
 async function api(action, extra = {}) {
   const hit = clientCache.get(action, currentPeriod, extra);
@@ -408,7 +411,7 @@ document.getElementById('agentModal').addEventListener('click', (e) => { if (e.t
 // ============ OVERVIEW ============
 async function renderOverview() {
   const data = await api('overviewFull', { period: currentPeriod });
-  chartConfigs = {};
+  destroyCharts(['kpiTrendChart','categoryChart','ahtChart','teamChart','assessChart']);
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-4 gap-5 mb-8">
       <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
@@ -473,43 +476,41 @@ async function renderOverview() {
     </div>
   `;
   const kpiTrend = data.trend || { months: [], avgKPI: [] };
-  stashChart('kpiTrendChart', {
+  new Chart(document.getElementById('kpiTrendChart'), {
     type: 'line',
     data: { labels: kpiTrend.months, datasets: [{ label: 'Team Avg KPI', data: kpiTrend.avgKPI, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb' }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg KPI: ${round(ctx.parsed.y)}` } } }, scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'KPI Score' } }, x: { title: { display: true, text: 'Month' } } } }
   });
   const cats = data.categoryTop5 || [];
-  stashChart('categoryChart', {
+  new Chart(document.getElementById('categoryChart'), {
     type: 'bar',
     data: { labels: cats.map(c => c.name), datasets: [{ label: 'Audits', data: cats.map(c => c.count), backgroundColor: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'], borderRadius: 6 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x} audits` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
   });
   const aht = data.ahtTrend || { months: [], avgAht: [] };
-  stashChart('ahtChart', {
+  new Chart(document.getElementById('ahtChart'), {
     type: 'line',
     data: { labels: aht.months, datasets: [{ label: 'Avg AHT (sec)', data: aht.avgAht, borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#dc2626' }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} sec` } } }, scales: { y: { beginAtZero: false, title: { display: true, text: 'Seconds' } }, x: { title: { display: true, text: 'Month' } } } }
   });
   const teams = data.agentsPerTeam || [];
   const pieColors = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#f59e0b', '#0891b2', '#db2777', '#65a30d', '#6366f1', '#ea580c', '#0ea5e9', '#14b8a6'];
-  stashChart('teamChart', {
+  new Chart(document.getElementById('teamChart'), {
     type: 'pie',
     data: { labels: teams.map(t => t.teamLeader.split(',')[0] + ' (' + t.count + ')'), datasets: [{ data: teams.map(t => t.count), backgroundColor: pieColors.slice(0, teams.length), borderWidth: 2, borderColor: '#ffffff' }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } }, tooltip: { callbacks: { title: (ctx) => teams[ctx[0].dataIndex].teamLeader, label: (ctx) => `${ctx.parsed} agents` } } } }
   });
   const assess = data.assessmentTrend || { months: [], avgAssess: [] };
-  stashChart('assessChart', {
+  new Chart(document.getElementById('assessChart'), {
     type: 'line',
     data: { labels: assess.months, datasets: [{ label: 'Avg Assessment', data: assess.avgAssess, borderColor: '#7c3aed', backgroundColor: 'rgba(124, 58, 237, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#7c3aed' }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${round(ctx.parsed.y)}%` } } }, scales: { y: { beginAtZero: false, min: 50, max: 100, title: { display: true, text: 'Assessment Score' } }, x: { title: { display: true, text: 'Month' } } } }
   });
-  replayCharts(chartConfigs);
 }
 
 // ============ KPI REPORT ============
 async function renderKPI() {
   const rows = await api('kpi');
-  chartConfigs = {};
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <table class="w-full text-sm">
@@ -547,7 +548,6 @@ async function renderKPI() {
 // ============ MARKDOWNS ============
 async function renderMarkdowns() {
   const rows = await api('markdowns', { scope: 'all' });
-  chartConfigs = {};
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl p-5 shadow-sm">
       <h3 class="font-semibold text-slate-900 mb-4">🎯 Where agents lose points — ${esc(currentPeriod)}</h3>
@@ -575,7 +575,6 @@ async function renderMarkdowns() {
 // ============ TEAMS ============
 async function renderTeams() {
   const teams = await api('teams');
-  chartConfigs = {};
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-2 gap-5">
       ${teams.map(t => `
@@ -608,7 +607,6 @@ async function renderTeams() {
 // ============ AGENTS ============
 async function renderAgents() {
   const agents = await api('agents');
-  chartConfigs = {};
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <table class="w-full text-sm">
@@ -643,14 +641,12 @@ let currentAttendanceTabName = '';
 
 async function loadAttendanceTabs(force) {
   if (attendanceTabs && attendanceTabs.length && !force) return;
-  // cache-buster: prevents stale 404-era responses from being reused
   const params = new URLSearchParams({ action: 'attendanceTabs', email: EMAIL, _t: Date.now() });
   const res = await fetch(`${API}?${params}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'API error');
   attendanceTabs = (json.data && json.data.tabs) || [];
-  // Prefer the tab that matches the current period (e.g. "August 2026")
   const match = attendanceTabs.find(t => t === currentPeriod);
   if (match) currentAttendanceTabName = match;
   else if (!currentAttendanceTabName || !attendanceTabs.includes(currentAttendanceTabName)) {
@@ -659,7 +655,6 @@ async function loadAttendanceTabs(force) {
 }
 
 async function renderAttendance() {
-  chartConfigs = {};
   let loadErr = null;
   try { await loadAttendanceTabs(false); }
   catch (e) { loadErr = e; console.error('attendanceTabs fetch failed:', e); }
@@ -687,7 +682,6 @@ async function renderAttendance() {
   if (sel) sel.addEventListener('change', async (e) => {
     currentAttendanceTabName = e.target.value;
     await renderAttendanceGrid();
-    snapshotCurrentPage();
   });
 
   await renderAttendanceGrid();
@@ -801,7 +795,6 @@ async function editAttendanceCell(td) {
       const st = document.getElementById('saveStatus');
       if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; }
       setTimeout(() => { td.classList.remove('saved'); if (st) st.textContent = ''; }, 1500);
-      invalidatePage('attendance');
     } catch (e) {
       td.classList.remove('saving');
       td.classList.add('error');
@@ -842,7 +835,6 @@ function dafQuery() {
 }
 
 async function renderDAF() {
-  chartConfigs = {};
   let data;
   try {
     const params = dafQuery();
@@ -855,6 +847,8 @@ async function renderDAF() {
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load DAF: ${esc(e.message)}</div>`;
     return;
   }
+
+  destroyCharts(['dafDailyChart','dafInfractionsChart']);
 
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
@@ -1019,14 +1013,14 @@ async function renderDAF() {
   `;
 
   const daily = data.dailyTrend || [];
-  stashChart('dafDailyChart', {
+  new Chart(document.getElementById('dafDailyChart'), {
     type: 'line',
     data: { labels: daily.map(d => d.date.slice(5)), datasets: [{ label: 'Incidents', data: daily.map(d => d.count), borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.15)', borderWidth: 3, fill: true, tension: 0.3, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#dc2626' }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} incidents on ${daily[ctx.dataIndex].date}` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Incidents' } }, x: { title: { display: true, text: 'Date (MM-DD)' } } } }
   });
 
   const infr = data.topInfractions || [];
-  stashChart('dafInfractionsChart', {
+  new Chart(document.getElementById('dafInfractionsChart'), {
     type: 'bar',
     data: { labels: infr.map(i => i.name.length > 30 ? i.name.slice(0, 27) + '…' : i.name), datasets: [{ label: 'Count', data: infr.map(i => i.count), backgroundColor: ['#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5'], borderRadius: 6 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => infr[ctx[0].dataIndex].name, label: (ctx) => `${ctx.parsed.x} incidents` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
@@ -1034,19 +1028,17 @@ async function renderDAF() {
 
   document.getElementById('dafFilterMode').addEventListener('change', (e) => {
     dafFilterMode = e.target.value;
-    invalidatePage('daf');
     renderDAF();
   });
   const sm = document.getElementById('dafStartMonth');
   const sy = document.getElementById('dafStartYear');
   const em = document.getElementById('dafEndMonth');
   const ey = document.getElementById('dafEndYear');
-  if (sm) sm.addEventListener('change', (e) => { dafStartMonth = e.target.value; invalidatePage('daf'); renderDAF(); });
-  if (sy) sy.addEventListener('change', (e) => { dafStartYear = e.target.value; invalidatePage('daf'); renderDAF(); });
-  if (em) em.addEventListener('change', (e) => { dafEndMonth = e.target.value; invalidatePage('daf'); renderDAF(); });
-  if (ey) ey.addEventListener('change', (e) => { dafEndYear = e.target.value; invalidatePage('daf'); renderDAF(); });
+  if (sm) sm.addEventListener('change', (e) => { dafStartMonth = e.target.value; renderDAF(); });
+  if (sy) sy.addEventListener('change', (e) => { dafStartYear = e.target.value; renderDAF(); });
+  if (em) em.addEventListener('change', (e) => { dafEndMonth = e.target.value; renderDAF(); });
+  if (ey) ey.addEventListener('change', (e) => { dafEndYear = e.target.value; renderDAF(); });
 
-  replayCharts(chartConfigs);
   await renderDAFGrid('raw');
   await renderDAFGrid('ir');
 }
@@ -1106,7 +1098,6 @@ async function saveGhostRow(which) {
     ghostRowState[which].active = false;
     ghostRowState[which].values = [];
     clientCache.clear();
-    invalidatePage('daf');
     if (st) { st.textContent = '✓ Row added'; st.className = 'text-xs font-medium text-green-600'; setTimeout(() => { st.textContent = ''; }, 2000); }
     await renderDAF();
   } catch (e) {
@@ -1401,7 +1392,6 @@ async function editDAFCell(td) {
         const st = document.getElementById(stId);
         if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; setTimeout(() => { st.textContent = ''; }, 1500); }
       }
-      invalidatePage('daf');
     } catch (e) {
       td.style.background = '#fee2e2';
       td.innerHTML = originalHtml;
@@ -1434,70 +1424,8 @@ window.unhideAll = unhideAll;
 window.clearSelection = clearSelection;
 window.selectAllVisible = selectAllVisible;
 
-// ============ PAGE SNAPSHOT / RESTORE ============
-function snapshotSpecificPage(page) {
-  if (!page) return;
-  const el = document.getElementById('content');
-  if (!el) return;
-  const key = pageCacheKey(page, currentPeriod);
-  pageCache.set(key, {
-    html: el.innerHTML,
-    charts: JSON.parse(JSON.stringify(chartConfigs)),
-    scrollY: window.scrollY,
-    savedAt: Date.now()
-  });
-}
-
-function snapshotCurrentPage() {
-  snapshotSpecificPage(currentPage);
-}
-
-function restoreFromSnapshot(page) {
-  const key = pageCacheKey(page, currentPeriod);
-  const snapshot = pageCache.get(key);
-  if (!snapshot) return false;
-
-  destroyLiveCharts();
-  const el = document.getElementById('content');
-  el.innerHTML = snapshot.html;
-
-  chartConfigs = snapshot.charts || {};
-  replayCharts(chartConfigs);
-
-  requestAnimationFrame(() => { window.scrollTo(0, snapshot.scrollY || 0); });
-
-  rebindPageEvents(page);
-  return true;
-}
-
-function rebindPageEvents(page) {
-  if (page === 'attendance') {
-    const sel = document.getElementById('attMonthSelect');
-    if (sel) {
-      sel.addEventListener('change', async (e) => {
-        currentAttendanceTabName = e.target.value;
-        await renderAttendanceGrid();
-        snapshotCurrentPage();
-      });
-    }
-  }
-  if (page === 'daf') {
-    const fm = document.getElementById('dafFilterMode');
-    if (fm) fm.addEventListener('change', (e) => { dafFilterMode = e.target.value; invalidatePage('daf'); renderDAF(); });
-    const sm = document.getElementById('dafStartMonth');
-    const sy = document.getElementById('dafStartYear');
-    const em = document.getElementById('dafEndMonth');
-    const ey = document.getElementById('dafEndYear');
-    if (sm) sm.addEventListener('change', (e) => { dafStartMonth = e.target.value; invalidatePage('daf'); renderDAF(); });
-    if (sy) sy.addEventListener('change', (e) => { dafStartYear = e.target.value; invalidatePage('daf'); renderDAF(); });
-    if (em) em.addEventListener('change', (e) => { dafEndMonth = e.target.value; invalidatePage('daf'); renderDAF(); });
-    if (ey) ey.addEventListener('change', (e) => { dafEndYear = e.target.value; invalidatePage('daf'); renderDAF(); });
-  }
-}
-
 // ============ NAVIGATION ============
 const comingSoon = async () => {
-  chartConfigs = {};
   document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>';
 };
 
@@ -1509,55 +1437,35 @@ const renderers = {
   appointments: comingSoon, users: comingSoon,
 };
 
+// Prevents a slow render from clobbering the UI after the user has navigated away
+let navToken = 0;
+
 async function navigate(page) {
-  const previousPage = currentPage;
+  const myToken = ++navToken;
+  currentPage = page;
 
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
   document.getElementById('pageTitle').textContent = labels[page] || page;
 
-  if (previousPage && previousPage !== page) {
-    snapshotSpecificPage(previousPage);
-  }
-
-  currentPage = page;
-
-  // Try restoring from page cache first
-  if (pageCache.has(pageCacheKey(page, currentPeriod))) {
-    restoreFromSnapshot(page);
-    const stats = clientCache.getStats();
-    document.getElementById('lastSync').textContent = `Last synced ${new Date(pageCache.get(pageCacheKey(page, currentPeriod)).savedAt).toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
-    return;
-  }
-
-  // Cache miss — do the full fetch/render
   const simpleFetches = { kpi: 'kpi', markdowns: 'markdowns', teams: 'teams', agents: 'agents', overview: 'overviewFull' };
   const cacheKey = simpleFetches[page];
   const alreadyCached = cacheKey ? clientCache.has(cacheKey, currentPeriod, page === 'markdowns' ? { scope: 'all' } : {}) : true;
-  // Attendance and DAF always show the loading bar — their fetches aren't tracked
-  // by clientCache, and they take the longest to render.
   const isSlowPage = (page === 'attendance' || page === 'daf');
   const showBar = isSlowPage || !alreadyCached;
   if (showBar) { showLoadingBar(); setLoadingStatus(0, 1, labels[page]); }
+
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
+
   try {
-    destroyLiveCharts();
-    chartConfigs = {};
     await renderers[page]();
-    if (page !== 'attendance' && page !== 'daf') {
-      if (currentPage === page) snapshotSpecificPage(page);
-    } else {
-      const pageAtSnapshotTime = page;
-      setTimeout(() => {
-        if (currentPage === pageAtSnapshotTime) {
-          snapshotSpecificPage(pageAtSnapshotTime);
-        }
-      }, 1200);
-    }
+    if (myToken !== navToken) return; // user navigated away mid-render; discard this result
     if (showBar) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
     const stats = clientCache.getStats();
     document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
+    showToast(labels[page] || page);
   } catch (e) {
+    if (myToken !== navToken) return;
     if (showBar) hideLoadingBar();
     document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
   }
@@ -1575,7 +1483,6 @@ document.querySelectorAll('.period-btn').forEach(btn => {
       b.classList.toggle('text-slate-600', b.dataset.mode !== periodMode);
     });
     populatePeriodSelect();
-    invalidateAllPages();
     await prefetchAll();
     navigate(currentPage);
   });
@@ -1583,14 +1490,12 @@ document.querySelectorAll('.period-btn').forEach(btn => {
 
 document.getElementById('periodSelect').addEventListener('change', async (e) => {
   currentPeriod = e.target.value;
-  invalidateAllPages();
   await prefetchAll();
   navigate(currentPage);
 });
 
 document.getElementById('clearCacheBtn').addEventListener('click', () => {
   clientCache.clear();
-  invalidateAllPages();
   prefetchAll().then(() => navigate(currentPage));
 });
 
