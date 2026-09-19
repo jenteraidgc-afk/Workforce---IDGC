@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Workforce Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   body { font-family: 'Inter', system-ui, sans-serif; background: #f1f5f9; }
   .sidebar-item.active { background: #2563eb; color: white; }
@@ -18,8 +18,12 @@
   .att-cell.saving { background: #fef3c7; }
   .att-cell.saved { background: #d1fae5; }
   .att-cell.error { background: #fee2e2; }
-  .daf-row-selected { background: #dbeafe !important; }
-  #toast { transition: opacity 0.25s ease, transform 0.25s ease; }
+  .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:auto; }
+  .dot-idle { background:#475569; }
+  .dot-loading { background:#f59e0b; animation: pulse 1s infinite; }
+  .dot-ready { background:#22c55e; }
+  .dot-error { background:#ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 </style>
 </head>
 <body class="min-h-screen">
@@ -35,19 +39,19 @@
       </div>
     </div>
     <nav class="flex-1 p-3 space-y-1 text-sm overflow-y-auto">
-      <a href="#" data-page="overview" class="sidebar-item active flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📊</span><span>Overview</span></a>
-      <a href="#" data-page="kpi" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📈</span><span>KPI Report</span></a>
-      <a href="#" data-page="markdowns" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🎯</span><span>Markdowns</span></a>
-      <a href="#" data-page="teams" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>👥</span><span>Team Management</span></a>
-      <a href="#" data-page="agents" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🧑‍💼</span><span>Agents / CSRs</span></a>
-      <a href="#" data-page="attendance" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📅</span><span>Attendance</span></a>
-      <a href="#" data-page="daf" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📋</span><span>DAF Tracker</span></a>
-      <a href="#" data-page="appointments" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🗓️</span><span>Appointments</span></a>
-      <a href="#" data-page="users" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>⚙️</span><span>Users</span></a>
+      <a href="#" data-page="overview" class="sidebar-item active flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📊</span><span>Overview</span><span class="status-dot dot-idle" data-dot="overview"></span></a>
+      <a href="#" data-page="kpi" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📈</span><span>KPI Report</span><span class="status-dot dot-idle" data-dot="kpi"></span></a>
+      <a href="#" data-page="markdowns" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🎯</span><span>Markdowns</span><span class="status-dot dot-idle" data-dot="markdowns"></span></a>
+      <a href="#" data-page="teams" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>👥</span><span>Team Management</span><span class="status-dot dot-idle" data-dot="teams"></span></a>
+      <a href="#" data-page="agents" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🧑‍💼</span><span>Agents / CSRs</span><span class="status-dot dot-idle" data-dot="agents"></span></a>
+      <a href="#" data-page="attendance" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📅</span><span>Attendance</span><span class="status-dot dot-idle" data-dot="attendance"></span></a>
+      <a href="#" data-page="daf" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📋</span><span>DAF Tracker</span><span class="status-dot dot-idle" data-dot="daf"></span></a>
+      <a href="#" data-page="appointments" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🗓️</span><span>Appointments</span><span class="status-dot dot-idle" data-dot="appointments"></span></a>
+      <a href="#" data-page="users" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>⚙️</span><span>Users</span><span class="status-dot dot-idle" data-dot="users"></span></a>
     </nav>
     <div class="p-4 border-t border-slate-800 text-xs">
       <div class="text-slate-400 truncate">jentera.idgc@gmail.com</div>
-      <div class="text-slate-500 text-[10px] mt-1" id="cacheStatus">Cache: empty</div>
+      <div class="text-slate-500 text-[10px] mt-1" id="cacheStatus">Ready</div>
     </div>
   </aside>
 
@@ -55,7 +59,7 @@
     <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
       <div>
         <h1 class="text-2xl font-bold text-slate-900" id="pageTitle">Dashboard Overview</h1>
-        <p class="text-slate-500 text-sm" id="lastSync">Loading...</p>
+        <p class="text-slate-500 text-sm" id="lastSync">Ready</p>
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <div class="flex bg-white rounded-lg border border-slate-300 p-1">
@@ -66,17 +70,7 @@
         <select id="periodSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
           <option>Loading...</option>
         </select>
-        <button id="clearCacheBtn" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium hover:bg-slate-50 transition" title="Clear cache">🔄</button>
-      </div>
-    </div>
-
-    <div id="loadingBar" class="hidden mb-6">
-      <div class="h-2 bg-slate-200 rounded-full overflow-hidden">
-        <div id="loadingProgress" class="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
-      </div>
-      <div class="flex items-center justify-between text-xs text-slate-500 mt-2 font-medium">
-        <span id="loadingText">Loading...</span>
-        <span id="loadingPercent" class="font-bold text-blue-600">0%</span>
+        <button id="refreshBtn" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium hover:bg-slate-50 transition" title="Reload current page">🔄</button>
       </div>
     </div>
 
@@ -92,6 +86,14 @@
   </div>
 </div>
 
+<div id="overlay" class="hidden fixed inset-0 bg-black bg-opacity-30 z-40 flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 min-w-[280px]">
+    <div class="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+    <div class="text-slate-800 font-semibold text-sm" id="overlayTitle">Loading...</div>
+    <div class="text-slate-500 text-xs" id="overlayHint">Please wait</div>
+  </div>
+</div>
+
 <div id="toast" class="hidden fixed top-6 right-6 z-[60] bg-white border border-green-200 text-green-700 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2">
   <span>✓</span><span id="toastText">Loaded</span>
 </div>
@@ -99,132 +101,71 @@
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
 const EMAIL = 'jentera.idgc@gmail.com';
-const CACHE_TTL = 5 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 60000;
 
 let currentPage = 'overview';
 let periodMode = 'month';
-let currentPeriod = 'August 2026';
+let currentPeriod = '';
 let PERIODS = { month: [], quarter: [], year: [] };
+let attendanceTabs = null;
+let currentAttendanceTabName = '';
 
-const PREFETCH_ACTIONS = [
-  { action: 'overviewFull', label: 'Overview' },
-  { action: 'kpi',          label: 'KPI Report' },
-  { action: 'markdowns',    label: 'Markdowns', extra: { scope: 'all' } },
-  { action: 'teams',        label: 'Teams' },
-  { action: 'agents',       label: 'Agents' },
-];
+const PAGE_LABELS = {
+  overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics',
+  teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance',
+  daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users'
+};
 
-class SmartCache {
-  constructor() { this.cache = new Map(); this.hits = 0; this.misses = 0; this.loadFromLocalStorage(); }
-  _key(a, p, e) { return `${a}|${p}|${JSON.stringify(e || {})}`; }
-  get(a, p, e = {}) {
-    const k = this._key(a, p, e);
-    const hit = this.cache.get(k);
-    if (!hit) { this.misses++; this.updateStatus(); return null; }
-    if (Date.now() - hit.timestamp > CACHE_TTL) { this.cache.delete(k); this.misses++; this.updateStatus(); return null; }
-    this.hits++; this.updateStatus(); return hit.data;
-  }
-  set(a, p, e = {}, data) {
-    this.cache.set(this._key(a, p, e), { data, timestamp: Date.now() });
-    this.saveToLocalStorage(); this.updateStatus();
-  }
-  has(a, p, e = {}) {
-    const k = this._key(a, p, e);
-    const hit = this.cache.get(k);
-    return hit && (Date.now() - hit.timestamp < CACHE_TTL);
-  }
-  clear() { this.cache.clear(); this.hits = 0; this.misses = 0; localStorage.removeItem('wf_cache'); this.updateStatus(); }
-  saveToLocalStorage() { try { localStorage.setItem('wf_cache', JSON.stringify([...this.cache.entries()])); } catch (e) {} }
-  loadFromLocalStorage() {
-    try {
-      const raw = localStorage.getItem('wf_cache');
-      if (!raw) return;
-      const arr = JSON.parse(raw);
-      const now = Date.now();
-      arr.forEach(([k, v]) => { if (now - v.timestamp < CACHE_TTL) this.cache.set(k, v); });
-    } catch (e) {}
-  }
-  updateStatus() {
-    const total = this.hits + this.misses;
-    const rate = total ? Math.round((this.hits / total) * 100) : 0;
-    const el = document.getElementById('cacheStatus');
-    if (el) el.textContent = `Cache: ${this.cache.size} entries, ${rate}% hit rate`;
-  }
-  getStats() { const t = this.hits + this.misses; return { size: this.cache.size, hitRate: t ? (this.hits / t) * 100 : 0 }; }
+// ============ DATA CACHE ============
+const dataCache = new Map(); // key → { ts, data }
+const DATA_TTL = 5 * 60 * 1000;
+
+function cacheKey(action, extra) { return action + '|' + JSON.stringify(extra || {}); }
+function cacheGet(key) {
+  const hit = dataCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.ts > DATA_TTL) { dataCache.delete(key); return null; }
+  return hit.data;
 }
-const clientCache = new SmartCache();
+function cacheSet(key, data) { dataCache.set(key, { ts: Date.now(), data }); }
+function cacheClear() { dataCache.clear(); }
 
-// ============ CHART MANAGEMENT ============
-// Each render destroys only its own charts. No globals, no page cache.
-function destroyCharts(ids) {
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const existing = Chart.getChart(el);
-    if (existing) existing.destroy();
-  });
+// ============ FETCH ============
+function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms || FETCH_TIMEOUT_MS);
+  return fetch(url, Object.assign({ signal: ctrl.signal }, opts || {}))
+    .finally(() => clearTimeout(t));
 }
 
-// ============ TOAST ============
-let toastTimer = null;
-function showToast(label) {
-  const t = document.getElementById('toast');
-  const txt = document.getElementById('toastText');
-  if (!t || !txt) return;
-  txt.textContent = label + ' loaded';
-  t.classList.remove('hidden');
-  requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    t.style.opacity = '0';
-    t.style.transform = 'translateY(-8px)';
-    setTimeout(() => { t.classList.add('hidden'); t.style.opacity = ''; t.style.transform = ''; }, 250);
-  }, 1500);
-}
-
-async function api(action, extra = {}) {
-  const hit = clientCache.get(action, currentPeriod, extra);
-  if (hit !== null) return hit;
-  const params = new URLSearchParams({ action, email: EMAIL, period: currentPeriod, ...extra });
-  const res = await fetch(`${API}?${params}`);
+async function apiGet(paramsObj, extra) {
+  // FIX: capture period at call time so a mid-flight change can't poison cache
+  const period = currentPeriod;
+  const key = cacheKey(paramsObj.action, Object.assign({ period }, extra || {}));
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  const params = new URLSearchParams({ email: EMAIL, ...paramsObj });
+  const res = await fetchWithTimeout(`${API}?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'API error');
-  clientCache.set(action, currentPeriod, extra, json.data);
+  cacheSet(key, json.data);
   return json.data;
 }
 
 async function apiPost(payload) {
-  const res = await fetch(API, {
+  const res = await fetchWithTimeout(API, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ email: EMAIL, ...payload })
   });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'API error');
   return json.data;
 }
 
-async function loadPeriods() {
-  const params = new URLSearchParams({ action: 'periods', email: EMAIL });
-  const res = await fetch(`${API}?${params}`);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error);
-  PERIODS = json.data;
-}
-
-function populatePeriodSelect() {
-  const sel = document.getElementById('periodSelect');
-  const list = PERIODS[periodMode] || [];
-  if (!list.length) { sel.innerHTML = '<option value="">No data</option>'; return; }
-  sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
-  if (list.includes(currentPeriod)) {
-    sel.value = currentPeriod;
-  } else {
-    currentPeriod = list[0];
-    sel.value = currentPeriod;
-  }
-}
-
+// ============ UI HELPERS ============
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
 function round(n) { return Math.round(Number(n || 0) * 100) / 100; }
 function badge(v, good, warn) {
@@ -232,36 +173,81 @@ function badge(v, good, warn) {
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
 
-function showLoadingBar() { const b = document.getElementById('loadingBar'); if (b) b.classList.remove('hidden'); }
-function hideLoadingBar() { const b = document.getElementById('loadingBar'); if (b) b.classList.add('hidden'); }
-function setLoadingStatus(done, total, currentLabel) {
-  const pctVal = total > 0 ? Math.round((done / total) * 100) : 0;
-  const prog = document.getElementById('loadingProgress');
-  const pct = document.getElementById('loadingPercent');
-  const txt = document.getElementById('loadingText');
-  if (prog) prog.style.width = pctVal + '%';
-  if (pct) pct.textContent = pctVal + '%';
-  if (txt) {
-    if (done >= total) txt.textContent = 'Ready';
-    else txt.textContent = `Loading ${done + 1} of ${total}: ${currentLabel || '...'}`;
+function setDot(page, state) {
+  const dot = document.querySelector(`[data-dot="${page}"]`);
+  if (!dot) return;
+  dot.className = 'status-dot ' + (state === 'ready' ? 'dot-ready' : state === 'loading' ? 'dot-loading' : state === 'error' ? 'dot-error' : 'dot-idle');
+}
+
+let overlayCount = 0;
+function showOverlay(title, hint) {
+  overlayCount++;
+  document.getElementById('overlayTitle').textContent = title || 'Loading...';
+  document.getElementById('overlayHint').textContent = hint || 'Please wait';
+  document.getElementById('overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function hideOverlay() {
+  overlayCount = Math.max(0, overlayCount - 1);
+  if (overlayCount === 0) {
+    document.getElementById('overlay').classList.add('hidden');
+    document.body.style.overflow = '';
   }
 }
 
-async function prefetchAll() {
-  const pending = PREFETCH_ACTIONS.filter(p => !clientCache.has(p.action, currentPeriod, p.extra || {}));
-  const total = PREFETCH_ACTIONS.length;
-  const alreadyDone = total - pending.length;
-  if (pending.length === 0) { hideLoadingBar(); return; }
-  showLoadingBar();
-  setLoadingStatus(alreadyDone, total, pending[0].label);
-  let completed = alreadyDone;
-  await Promise.all(pending.map(async (p) => {
-    try { await api(p.action, p.extra || {}); } catch (e) { console.warn('Prefetch failed:', p.action, e.message); }
-    completed++;
-    setLoadingStatus(completed, total, p.label);
-  }));
-  await new Promise(r => setTimeout(r, 400));
-  hideLoadingBar();
+let toastTimer = null;
+function showToast(label) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastText').textContent = label + ' ready';
+  t.classList.remove('hidden');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.add('hidden'); }, 1800);
+}
+
+function showError(title, message, retryFn) {
+  document.getElementById('content').innerHTML = `
+    <div class="bg-red-50 border border-red-200 rounded-xl p-6 max-w-2xl mx-auto text-center">
+      <div class="text-red-700 font-semibold mb-2">${esc(title)}</div>
+      <div class="text-red-600 text-sm mb-4">${esc(message)}</div>
+      <button id="retryBtn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium">Retry</button>
+    </div>
+  `;
+  const b = document.getElementById('retryBtn');
+  if (b && retryFn) b.addEventListener('click', retryFn);
+}
+
+// ============ CHART REGISTRY ============
+const chartRegistry = [];
+function makeChart(canvasEl, config) {
+  if (!canvasEl) return;
+  // Destroy any existing chart on this canvas first
+  const existing = Chart.getChart(canvasEl);
+  if (existing) existing.destroy();
+  const c = new Chart(canvasEl, config);
+  chartRegistry.push(c);
+  return c;
+}
+function destroyAllCharts() {
+  while (chartRegistry.length) {
+    try { chartRegistry.pop().destroy(); } catch (e) {}
+  }
+}
+
+// ============ PERIODS ============
+async function loadPeriods() {
+  PERIODS = await apiGet({ action: 'periods' });
+  const list = PERIODS.month || [];
+  if (list.length && !list.includes(currentPeriod)) currentPeriod = list[0];
+  populatePeriodSelect();
+}
+
+function populatePeriodSelect() {
+  const sel = document.getElementById('periodSelect');
+  const list = PERIODS[periodMode] || [];
+  if (!list.length) { sel.innerHTML = '<option value="">No data</option>'; return; }
+  sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (list.includes(currentPeriod)) sel.value = currentPeriod;
+  else { currentPeriod = list[0]; sel.value = currentPeriod; }
 }
 
 // ============ AGENT MODAL ============
@@ -269,22 +255,18 @@ async function openAgentProfile(name) {
   const modal = document.getElementById('agentModal');
   const box = document.getElementById('agentModalContent');
   modal.classList.remove('hidden');
-  box.innerHTML = `<div class="text-center py-20 text-sm text-slate-500">Loading profile for ${esc(name)}...</div>`;
+  box.innerHTML = `<div class="text-center py-20 text-sm text-slate-500">Loading profile...</div>`;
   try {
-    const data = await api('agentProfile', { name });
+    const data = await apiGet({ action: 'agentProfile', name });
     const p = data.profile || {};
     const daf = data.dafPoints || { points: 0, incidents: 0, irs: 0 };
     box.innerHTML = `
       <div class="flex items-start justify-between mb-6">
         <div class="flex items-center gap-4">
-          <div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-2xl font-bold">
-            ${esc((name.split(',')[0] || '?').charAt(0))}
-          </div>
+          <div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-2xl font-bold">${esc((name.split(',')[0] || '?').charAt(0))}</div>
           <div>
             <h2 class="text-2xl font-bold text-slate-900">${esc(name)}</h2>
-            <p class="text-sm text-slate-500">
-              ${esc(p.position || '—')}${p.wave ? ' · ' + esc(p.wave) : ''}${p.employmentStatus ? ' · ' + esc(p.employmentStatus) : ''}
-            </p>
+            <p class="text-sm text-slate-500">${esc(p.position || '—')}${p.wave ? ' · ' + esc(p.wave) : ''}${p.employmentStatus ? ' · ' + esc(p.employmentStatus) : ''}</p>
           </div>
         </div>
         <div class="flex items-center gap-4">
@@ -303,8 +285,6 @@ async function openAgentProfile(name) {
             <div class="flex justify-between"><span class="text-slate-500">Immediate Head</span><span class="font-medium text-slate-800">${esc(p.immediateHead || '—')}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Shift</span><span class="font-medium text-slate-800">${esc(p.shift || '—')}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Hire Date</span><span class="font-medium text-slate-800">${esc(p.hireDate || '—')}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Regularization</span><span class="font-medium text-slate-800">${esc(p.regularizationDate || '—')}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Nickname</span><span class="font-medium text-slate-800">${esc(p.nickname || '—')}</span></div>
           </div>
         </div>
         <div class="bg-slate-50 rounded-xl p-4">
@@ -313,8 +293,6 @@ async function openAgentProfile(name) {
             <div class="flex justify-between"><span class="text-slate-500">Email</span><span class="font-medium text-slate-800 truncate ml-2 text-right">${esc(p.email || '—')}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Mobile</span><span class="font-medium text-slate-800">${esc(p.mobile || '—')}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Birthday</span><span class="font-medium text-slate-800">${esc(p.birthday || '—')}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Emergency</span><span class="font-medium text-slate-800 truncate ml-2 text-right">${esc(p.emergencyName || '—')}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Em. Contact</span><span class="font-medium text-slate-800">${esc(p.emergencyContact || '—')}</span></div>
           </div>
         </div>
       </div>
@@ -326,33 +304,8 @@ async function openAgentProfile(name) {
         <h3 class="font-semibold text-slate-900 mb-3">📈 QA Performance Score Trend</h3>
         <div class="h-64"><canvas id="modalQaChart"></canvas></div>
       </div>
-      <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
-        <h3 class="font-semibold text-slate-900 mb-3">🎯 Sub-Category Analytics (${esc(currentPeriod)})</h3>
-        ${data.analytics && data.analytics.length > 0 ? `
-          <table class="w-full text-sm">
-            <thead class="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th class="text-left px-3 py-2 font-semibold text-slate-600">Main Category</th>
-                <th class="text-left px-3 py-2 font-semibold text-slate-600">Sub Category</th>
-                <th class="text-right px-3 py-2 font-semibold text-slate-600">Count</th>
-                <th class="text-right px-3 py-2 font-semibold text-slate-600">Avg Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data.analytics.map(a => `
-                <tr class="border-b border-slate-100">
-                  <td class="px-3 py-2 text-slate-700">${esc(a.mainCategory)}</td>
-                  <td class="px-3 py-2 text-slate-700">${esc(a.subCategory)}</td>
-                  <td class="px-3 py-2 text-right text-slate-600">${a.count}</td>
-                  <td class="px-3 py-2 text-right">${badge(a.avgScore, 90, 80)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        ` : '<div class="text-slate-400 text-sm py-4">No analytics data for this period.</div>'}
-      </div>
       <div class="bg-white border border-slate-200 rounded-xl p-5">
-        <h3 class="font-semibold text-slate-900 mb-3">📋 Criteria Accuracy (${esc(currentPeriod)})</h3>
+        <h3 class="font-semibold text-slate-900 mb-3">📋 Criteria Accuracy</h3>
         ${data.criteriaTable && data.criteriaTable.rows && data.criteriaTable.rows.length > 0 ? `
           <table class="w-full text-sm">
             <thead class="bg-slate-50 border-b border-slate-200">
@@ -367,37 +320,30 @@ async function openAgentProfile(name) {
             <tbody>
               ${data.criteriaTable.rows.map(r => {
                 const accColor = r.accuracy >= 95 ? 'text-green-600' : r.accuracy >= 90 ? 'text-amber-600' : 'text-red-600';
-                return `
-                  <tr class="border-b border-slate-100">
-                    <td class="px-3 py-2 text-slate-700">${esc(r.criterion)}</td>
-                    <td class="px-3 py-2 text-right text-slate-600">${r.yes}</td>
-                    <td class="px-3 py-2 text-right text-slate-600">${r.no}</td>
-                    <td class="px-3 py-2 text-right text-slate-600">${r.total}</td>
-                    <td class="px-3 py-2 text-right font-semibold ${accColor}">${r.accuracy.toFixed(2)}%</td>
-                  </tr>
-                `;
+                return `<tr class="border-b border-slate-100">
+                  <td class="px-3 py-2 text-slate-700">${esc(r.criterion)}</td>
+                  <td class="px-3 py-2 text-right text-slate-600">${r.yes}</td>
+                  <td class="px-3 py-2 text-right text-slate-600">${r.no}</td>
+                  <td class="px-3 py-2 text-right text-slate-600">${r.total}</td>
+                  <td class="px-3 py-2 text-right font-semibold ${accColor}">${r.accuracy.toFixed(2)}%</td>
+                </tr>`;
               }).join('')}
-              <tr class="bg-slate-50 border-t-2 border-slate-300">
-                <td class="px-3 py-2 font-bold text-slate-900" colspan="3">Total Evaluations: ${data.criteriaTable.totalEvaluations}</td>
-                <td class="px-3 py-2"></td>
-                <td class="px-3 py-2 text-right font-bold text-slate-900">Avg: ${data.criteriaTable.totalEvaluations ? data.criteriaTable.avgAccuracy.toFixed(2) : '0.00'}%</td>
-              </tr>
             </tbody>
           </table>
-        ` : '<div class="text-slate-400 text-sm py-4">No criteria data for this period.</div>'}
+        ` : '<div class="text-slate-400 text-sm py-4">No criteria data.</div>'}
       </div>
     `;
     const aT = data.assessmentTrend || { months: [], scores: [] };
     const qT = data.qaTrend || { months: [], scores: [] };
-    new Chart(document.getElementById('modalAssessChart'), {
+    makeChart(document.getElementById('modalAssessChart'), {
       type: 'line',
       data: { labels: aT.months, datasets: [{ label: 'Assessment Score', data: aT.scores, borderColor: '#7c3aed', backgroundColor: 'rgba(124, 58, 237, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, spanGaps: true }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 50, max: 100, title: { display: true, text: 'Score' } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: 50, suggestedMax: 100 } } }
     });
-    new Chart(document.getElementById('modalQaChart'), {
+    makeChart(document.getElementById('modalQaChart'), {
       type: 'line',
       data: { labels: qT.months, datasets: [{ label: 'QA Score', data: qT.scores, borderColor: '#16a34a', backgroundColor: 'rgba(22, 163, 74, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, spanGaps: true }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 60, max: 100, title: { display: true, text: 'Score' } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: 60, suggestedMax: 100 } } }
     });
   } catch (err) {
     box.innerHTML = `<div class="text-red-600 p-4">Failed to load profile: ${esc(err.message)}</div>`;
@@ -408,109 +354,99 @@ window.openAgentProfile = openAgentProfile;
 window.closeAgentModal = closeAgentModal;
 document.getElementById('agentModal').addEventListener('click', (e) => { if (e.target.id === 'agentModal') closeAgentModal(); });
 
-// ============ OVERVIEW ============
-async function renderOverview() {
-  const data = await api('overviewFull', { period: currentPeriod });
-  destroyCharts(['kpiTrendChart','categoryChart','ahtChart','teamChart','assessChart']);
+// ============ DELEGATED CLICK FOR AGENT LINKS (XSS fix) ============
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-agent-name]');
+  if (!el) return;
+  const name = el.getAttribute('data-agent-name');
+  if (name) openAgentProfile(name);
+});
+
+// ============ RENDERERS ============
+async function renderOverview(token) {
+  const data = await apiGet({ action: 'overviewFull' });
+  if (token !== navToken) return;
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-4 gap-5 mb-8">
       <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
         <div class="text-blue-100 text-xs font-medium mb-1">HEADCOUNT</div>
         <div class="text-3xl font-bold">${data.headcount || 0}</div>
-        <div class="text-blue-100 text-xs mt-1">Active CSRs</div>
+        <div class="text-blue-100 text-xs mt-1">Agents audited (last ${3} months)</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE</div>
         <div class="text-3xl font-bold text-slate-900">${round(data.avgQA)}%</div>
-        <div class="text-slate-400 text-xs mt-1">Across active agents</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">AVG KPI</div>
         <div class="text-3xl font-bold text-slate-900">${round(data.avgKPI)}</div>
-        <div class="text-slate-400 text-xs mt-1">Out of 100</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">PERIOD</div>
         <div class="text-base font-bold text-slate-900 mt-1 truncate">${esc(data.period || currentPeriod)}</div>
-        <div class="text-slate-400 text-xs mt-1 capitalize">${periodMode}</div>
       </div>
     </div>
     <div class="bg-white rounded-xl p-5 shadow-sm mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-slate-900">📈 Team Average KPI — Monthly Trend</h3>
-        <span class="text-xs text-slate-400">All active agents</span>
-      </div>
+      <h3 class="font-semibold text-slate-900 mb-4">📈 Team Average KPI — Monthly Trend</h3>
       <div class="h-80"><canvas id="kpiTrendChart"></canvas></div>
     </div>
     <div class="grid grid-cols-2 gap-5 mb-6">
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-slate-900">🎯 Top 5 Main Categories</h3>
-          <span class="text-xs text-slate-400">${esc(currentPeriod)}</span>
-        </div>
+        <h3 class="font-semibold text-slate-900 mb-4">🎯 Top 5 Main Categories</h3>
         <div class="h-72"><canvas id="categoryChart"></canvas></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-slate-900">⏱️ Team Average AHT</h3>
-          <span class="text-xs text-slate-400">Seconds per month</span>
-        </div>
+        <h3 class="font-semibold text-slate-900 mb-4">⏱️ Team Average AHT</h3>
         <div class="h-72"><canvas id="ahtChart"></canvas></div>
       </div>
     </div>
     <div class="grid grid-cols-2 gap-5">
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-slate-900">👥 Agents per Team</h3>
-          <span class="text-xs text-slate-400">Team Leads only</span>
-        </div>
+        <h3 class="font-semibold text-slate-900 mb-4">👥 Agents per Team</h3>
         <div class="h-80"><canvas id="teamChart"></canvas></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-slate-900">📊 Assessment Score — Monthly Average</h3>
-          <span class="text-xs text-slate-400">Org-wide</span>
-        </div>
+        <h3 class="font-semibold text-slate-900 mb-4">📊 Assessment Score — Monthly Average</h3>
         <div class="h-80"><canvas id="assessChart"></canvas></div>
       </div>
     </div>
   `;
   const kpiTrend = data.trend || { months: [], avgKPI: [] };
-  new Chart(document.getElementById('kpiTrendChart'), {
+  makeChart(document.getElementById('kpiTrendChart'), {
     type: 'line',
-    data: { labels: kpiTrend.months, datasets: [{ label: 'Team Avg KPI', data: kpiTrend.avgKPI, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#2563eb' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Avg KPI: ${round(ctx.parsed.y)}` } } }, scales: { y: { beginAtZero: false, min: 60, max: 100, title: { display: true, text: 'KPI Score' } }, x: { title: { display: true, text: 'Month' } } } }
+    data: { labels: kpiTrend.months, datasets: [{ label: 'Team Avg KPI', data: kpiTrend.avgKPI, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: 60, suggestedMax: 100 } } }
   });
   const cats = data.categoryTop5 || [];
-  new Chart(document.getElementById('categoryChart'), {
+  makeChart(document.getElementById('categoryChart'), {
     type: 'bar',
     data: { labels: cats.map(c => c.name), datasets: [{ label: 'Audits', data: cats.map(c => c.count), backgroundColor: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'], borderRadius: 6 }] },
-    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x} audits` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
   });
   const aht = data.ahtTrend || { months: [], avgAht: [] };
-  new Chart(document.getElementById('ahtChart'), {
+  makeChart(document.getElementById('ahtChart'), {
     type: 'line',
-    data: { labels: aht.months, datasets: [{ label: 'Avg AHT (sec)', data: aht.avgAht, borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#dc2626' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} sec` } } }, scales: { y: { beginAtZero: false, title: { display: true, text: 'Seconds' } }, x: { title: { display: true, text: 'Month' } } } }
+    data: { labels: aht.months, datasets: [{ label: 'Avg AHT (sec)', data: aht.avgAht, borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
   });
   const teams = data.agentsPerTeam || [];
   const pieColors = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#f59e0b', '#0891b2', '#db2777', '#65a30d', '#6366f1', '#ea580c', '#0ea5e9', '#14b8a6'];
-  new Chart(document.getElementById('teamChart'), {
+  makeChart(document.getElementById('teamChart'), {
     type: 'pie',
     data: { labels: teams.map(t => t.teamLeader.split(',')[0] + ' (' + t.count + ')'), datasets: [{ data: teams.map(t => t.count), backgroundColor: pieColors.slice(0, teams.length), borderWidth: 2, borderColor: '#ffffff' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } }, tooltip: { callbacks: { title: (ctx) => teams[ctx[0].dataIndex].teamLeader, label: (ctx) => `${ctx.parsed} agents` } } } }
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } } } }
   });
   const assess = data.assessmentTrend || { months: [], avgAssess: [] };
-  new Chart(document.getElementById('assessChart'), {
+  makeChart(document.getElementById('assessChart'), {
     type: 'line',
-    data: { labels: assess.months, datasets: [{ label: 'Avg Assessment', data: assess.avgAssess, borderColor: '#7c3aed', backgroundColor: 'rgba(124, 58, 237, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#7c3aed' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${round(ctx.parsed.y)}%` } } }, scales: { y: { beginAtZero: false, min: 50, max: 100, title: { display: true, text: 'Assessment Score' } }, x: { title: { display: true, text: 'Month' } } } }
+    data: { labels: assess.months, datasets: [{ label: 'Avg Assessment', data: assess.avgAssess, borderColor: '#7c3aed', backgroundColor: 'rgba(124, 58, 237, 0.1)', borderWidth: 3, fill: true, tension: 0.35, pointRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { suggestedMin: 50, suggestedMax: 100 } } }
   });
 }
 
-// ============ KPI REPORT ============
-async function renderKPI() {
-  const rows = await api('kpi');
+async function renderKPI(token) {
+  const rows = await apiGet({ action: 'kpi' });
+  if (token !== navToken) return;
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <table class="w-full text-sm">
@@ -530,7 +466,7 @@ async function renderKPI() {
           ${rows.sort((a, b) => b.kpi - a.kpi).map((r, i) => `
             <tr class="border-b border-slate-100 hover:bg-slate-50">
               <td class="px-4 py-2 text-slate-400">${i + 1}</td>
-              <td class="px-4 py-2 font-medium text-slate-800 agent-link" onclick="openAgentProfile('${r.name.replace(/'/g, "\\'")}')">${esc(r.name)}</td>
+              <td class="px-4 py-2 font-medium text-slate-800 agent-link" data-agent-name="${esc(r.name)}">${esc(r.name)}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(r.team || '')}</td>
               <td class="px-4 py-2 text-right">${badge(r.qa, 90, 80)}</td>
               <td class="px-4 py-2 text-right text-slate-600">${r.attComponent}</td>
@@ -545,44 +481,40 @@ async function renderKPI() {
   `;
 }
 
-// ============ MARKDOWNS ============
-async function renderMarkdowns() {
-  const rows = await api('markdowns', { scope: 'all' });
+async function renderMarkdowns(token) {
+  const rows = await apiGet({ action: 'markdowns', scope: 'all' });
+  if (token !== navToken) return;
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl p-5 shadow-sm">
       <h3 class="font-semibold text-slate-900 mb-4">🎯 Where agents lose points — ${esc(currentPeriod)}</h3>
       <div class="space-y-3">
-        ${rows.map(r => {
+        ${rows.length === 0 ? '<div class="text-slate-400 text-sm py-4">No markdowns for this period.</div>' : rows.map(r => {
           const max = rows[0].failures || 1;
           const pct = (r.failures / max) * 100;
-          return `
-            <div>
-              <div class="flex justify-between text-sm mb-1 gap-4">
-                <span class="text-slate-700 font-medium">${esc(r.criterion)}</span>
-                <span class="text-slate-500 whitespace-nowrap">${r.failures} failures</span>
-              </div>
-              <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full bg-red-500 rounded-full" style="width: ${pct}%"></div>
-              </div>
+          return `<div>
+            <div class="flex justify-between text-sm mb-1 gap-4">
+              <span class="text-slate-700 font-medium">${esc(r.criterion)}</span>
+              <span class="text-slate-500 whitespace-nowrap">${r.failures} failures</span>
             </div>
-          `;
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-red-500 rounded-full" style="width: ${pct}%"></div>
+            </div>
+          </div>`;
         }).join('')}
       </div>
     </div>
   `;
 }
 
-// ============ TEAMS ============
-async function renderTeams() {
-  const teams = await api('teams');
+async function renderTeams(token) {
+  const teams = await apiGet({ action: 'teams' });
+  if (token !== navToken) return;
   document.getElementById('content').innerHTML = `
     <div class="grid grid-cols-2 gap-5">
       ${teams.map(t => `
         <div class="bg-white rounded-xl p-5 shadow-sm">
           <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
-              ${esc((t.teamLeader.split(',')[0] || '?').charAt(0))}
-            </div>
+            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">${esc((t.teamLeader.split(',')[0] || '?').charAt(0))}</div>
             <div>
               <div class="font-semibold text-slate-900">${esc(t.teamLeader)}</div>
               <div class="text-xs text-slate-500">Team Leader · ${t.agents.length} agents</div>
@@ -592,7 +524,7 @@ async function renderTeams() {
             ${t.agents.slice(0, 8).map(a => `
               <div class="text-sm text-slate-600 flex items-center gap-2">
                 <span class="text-slate-400">•</span>
-                <span class="agent-link" onclick="openAgentProfile('${a.name.replace(/'/g, "\\'")}')">${esc(a.name)}</span>
+                <span class="agent-link" data-agent-name="${esc(a.name)}">${esc(a.name)}</span>
                 ${a.position ? `<span class="text-xs text-slate-400">(${esc(a.position)})</span>` : ''}
               </div>
             `).join('')}
@@ -604,9 +536,9 @@ async function renderTeams() {
   `;
 }
 
-// ============ AGENTS ============
-async function renderAgents() {
-  const agents = await api('agents');
+async function renderAgents(token) {
+  const agents = await apiGet({ action: 'agents' });
+  if (token !== navToken) return;
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <table class="w-full text-sm">
@@ -622,7 +554,7 @@ async function renderAgents() {
         <tbody>
           ${agents.sort((a, b) => b.avgScore - a.avgScore).map(a => `
             <tr class="border-b border-slate-100 hover:bg-slate-50">
-              <td class="px-4 py-2 font-medium text-slate-800 agent-link" onclick="openAgentProfile('${a.name.replace(/'/g, "\\'")}')">${esc(a.name)}</td>
+              <td class="px-4 py-2 font-medium text-slate-800 agent-link" data-agent-name="${esc(a.name)}">${esc(a.name)}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(a.team || '')}</td>
               <td class="px-4 py-2 text-slate-500 text-xs">${esc(a.position || '')}</td>
               <td class="px-4 py-2 text-right text-slate-600">${a.audits}</td>
@@ -635,36 +567,26 @@ async function renderAgents() {
   `;
 }
 
-// ============ ATTENDANCE ============
-let attendanceTabs = null;
-let currentAttendanceTabName = '';
-
-async function loadAttendanceTabs(force) {
-  if (attendanceTabs && attendanceTabs.length && !force) return;
-  const params = new URLSearchParams({ action: 'attendanceTabs', email: EMAIL, _t: Date.now() });
-  const res = await fetch(`${API}?${params}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
-  attendanceTabs = (json.data && json.data.tabs) || [];
-  const match = attendanceTabs.find(t => t === currentPeriod);
-  if (match) currentAttendanceTabName = match;
-  else if (!currentAttendanceTabName || !attendanceTabs.includes(currentAttendanceTabName)) {
-    currentAttendanceTabName = attendanceTabs[0] || '';
+async function renderAttendance(token) {
+  if (!attendanceTabs || !attendanceTabs.length) {
+    const data = await apiGet({ action: 'attendanceTabs' });
+    if (token !== navToken) return;
+    attendanceTabs = (data && data.tabs) || [];
+    const match = attendanceTabs.find(t => t === currentPeriod);
+    currentAttendanceTabName = match || attendanceTabs[0] || '';
   }
-}
-
-async function renderAttendance() {
-  let loadErr = null;
-  try { await loadAttendanceTabs(false); }
-  catch (e) { loadErr = e; console.error('attendanceTabs fetch failed:', e); }
+  if (token !== navToken) return;
+  if (!currentAttendanceTabName) {
+    document.getElementById('content').innerHTML = '<div class="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg">No attendance tabs found.</div>';
+    return;
+  }
 
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm mb-4 p-4 flex items-center justify-between">
       <div class="flex items-center gap-4">
         <h3 class="font-semibold text-slate-900">📅 Attendance</h3>
         <select id="attMonthSelect" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium min-w-[200px]">
-          ${(attendanceTabs || []).map(t => `<option value="${esc(t)}" ${t === currentAttendanceTabName ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+          ${attendanceTabs.map(t => `<option value="${esc(t)}" ${t === currentAttendanceTabName ? 'selected' : ''}>${esc(t)}</option>`).join('')}
         </select>
       </div>
       <div class="flex items-center gap-3">
@@ -672,16 +594,15 @@ async function renderAttendance() {
         <span id="saveStatus" class="text-xs font-medium"></span>
       </div>
     </div>
-    ${loadErr ? `<div class="bg-red-50 text-red-700 p-4 rounded-lg mb-4">Failed to load attendance tabs: ${esc(loadErr.message)}</div>` : ''}
     <div id="attendanceGridContainer">
       <div class="text-center py-20 text-slate-400">Loading grid...</div>
     </div>
   `;
 
-  const sel = document.getElementById('attMonthSelect');
-  if (sel) sel.addEventListener('change', async (e) => {
+  document.getElementById('attMonthSelect').addEventListener('change', async (e) => {
     currentAttendanceTabName = e.target.value;
-    await renderAttendanceGrid();
+    showOverlay('Loading Attendance', currentAttendanceTabName);
+    try { await renderAttendanceGrid(); } finally { hideOverlay(); }
   });
 
   await renderAttendanceGrid();
@@ -692,27 +613,8 @@ async function renderAttendanceGrid() {
   if (!container) return;
   container.innerHTML = '<div class="text-center py-20 text-slate-400">Loading grid...</div>';
 
-  if (!currentAttendanceTabName) {
-    container.innerHTML = '<div class="text-slate-400 text-center py-20">No attendance tabs available</div>';
-    return;
-  }
-
-  let grid;
-  try {
-    const params = new URLSearchParams({ action: 'attendanceGrid', email: EMAIL, tab: currentAttendanceTabName });
-    const res = await fetch(`${API}?${params}`);
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'API error');
-    grid = json.data;
-  } catch (e) {
-    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load: ${esc(e.message)}</div>`;
-    return;
-  }
-
-  if (grid.error) {
-    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`;
-    return;
-  }
+  const grid = await apiGet({ action: 'attendanceGrid', tab: currentAttendanceTabName });
+  if (grid.error) { container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`; return; }
 
   let html = `
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -727,17 +629,10 @@ async function renderAttendanceGrid() {
           </thead>
           <tbody>
   `;
-
   grid.rows.forEach(r => {
     if (r.type === 'team') {
       const teamBg = r.bg || '#1e293b';
-      html += `
-        <tr>
-          <td style="background:${teamBg}; color:#fff; font-weight:bold;" class="sticky left-0 px-3 py-1 border border-slate-700" colspan="${1 + grid.dayHeaders.length + grid.summaryHeaders.length}">
-            ${esc(r.team)}
-          </td>
-        </tr>
-      `;
+      html += `<tr><td style="background:${teamBg}; color:#fff; font-weight:bold;" class="sticky left-0 px-3 py-1 border border-slate-700" colspan="${1 + grid.dayHeaders.length + grid.summaryHeaders.length}">${esc(r.team)}</td></tr>`;
       return;
     }
     html += `<tr class="hover:bg-slate-50">`;
@@ -752,19 +647,18 @@ async function renderAttendanceGrid() {
     r.summary.forEach(cell => {
       const bg = cell.bg || '#f8fafc';
       const fg = cell.fontColor || '';
-      const bold = 'font-weight:600;';
-      const style = `background:${bg}; ${fg ? 'color:' + fg + ';' : ''}${bold}`;
+      const style = `background:${bg}; ${fg ? 'color:' + fg + ';' : ''}font-weight:600;`;
       html += `<td class="px-2 py-1 text-center border border-slate-200" style="${style}">${esc(cell.value)}</td>`;
     });
     html += `</tr>`;
   });
-
   html += `</tbody></table></div></div>`;
   container.innerHTML = html;
 }
 
 async function editAttendanceCell(td) {
   if (td.dataset.editing === '1') return;
+  td.dataset.editing = '1';
   const currentValue = td.dataset.value || '';
   const codes = ['P', 'A', 'RD', 'TB', 'VL', 'SL', 'LWP', 'UT', 'Holiday', 'SLP', ''];
   const select = document.createElement('select');
@@ -778,23 +672,27 @@ async function editAttendanceCell(td) {
   const original = td.innerHTML;
   td.innerHTML = '';
   td.appendChild(select);
-  td.dataset.editing = '1';
   select.focus();
 
+  let done = false;
   const commit = async () => {
+    if (done) return;
+    done = true;
     const newValue = select.value;
     td.dataset.editing = '0';
     if (newValue === currentValue) { td.innerHTML = original; return; }
     td.classList.add('saving');
     td.innerHTML = newValue || '—';
     try {
-      await apiPost({ action: 'updateAttendanceCell', tabName: currentAttendanceTabName, rowNumber: td.dataset.row, colIndex: td.dataset.col, value: newValue, email: EMAIL });
+      await apiPost({ action: 'updateAttendanceCell', tabName: currentAttendanceTabName, rowNumber: td.dataset.row, colIndex: td.dataset.col, value: newValue });
       td.dataset.value = newValue;
       td.classList.remove('saving');
       td.classList.add('saved');
       const st = document.getElementById('saveStatus');
       if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; }
       setTimeout(() => { td.classList.remove('saved'); if (st) st.textContent = ''; }, 1500);
+      // Invalidate caches that might contain the stale attendance data
+      dataCache.clear();
     } catch (e) {
       td.classList.remove('saving');
       td.classList.add('error');
@@ -804,58 +702,45 @@ async function editAttendanceCell(td) {
     }
   };
   select.addEventListener('change', commit);
-  select.addEventListener('blur', commit);
+  select.addEventListener('blur', () => { if (!done) commit(); });
   select.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') select.blur();
-    if (ev.key === 'Escape') { td.dataset.editing = '0'; td.innerHTML = original; }
+    if (ev.key === 'Escape') { done = true; td.dataset.editing = '0'; td.innerHTML = original; }
   });
 }
 window.editAttendanceCell = editAttendanceCell;
 
-// ============ DAF TRACKER ============
+// ============ DAF ============
 let dafFilterMode = 'all';
 let dafStartMonth = 'January';
-let dafStartYear = '2026';
+let dafStartYear = String(new Date().getFullYear());
 let dafEndMonth = 'December';
-let dafEndYear = '2026';
+let dafEndYear = String(new Date().getFullYear());
 const DAF_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DAF_YEARS = ['2025','2026','2027'];
+const DAF_YEARS = (() => { const y = new Date().getFullYear(); return [String(y-1), String(y), String(y+1)]; })();
 
-function dafQuery() {
-  const p = new URLSearchParams({ email: EMAIL, filterMode: dafFilterMode });
+function dafQueryExtra() {
+  const extra = { filterMode: dafFilterMode };
   if (dafFilterMode === 'custom') {
-    p.set('startPeriod', `${dafStartMonth} ${dafStartYear}`);
-    p.set('endPeriod', `${dafEndMonth} ${dafEndYear}`);
+    extra.startPeriod = `${dafStartMonth} ${dafStartYear}`;
+    extra.endPeriod = `${dafEndMonth} ${dafEndYear}`;
   } else if (dafFilterMode === 'thisMonth') {
     const now = new Date();
-    p.set('startPeriod', `${DAF_MONTHS[now.getMonth()]} ${now.getFullYear()}`);
-    p.set('endPeriod', `${DAF_MONTHS[now.getMonth()]} ${now.getFullYear()}`);
+    extra.startPeriod = `${DAF_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+    extra.endPeriod = extra.startPeriod;
   }
-  return p;
+  return extra;
 }
 
-async function renderDAF() {
-  let data;
-  try {
-    const params = dafQuery();
-    params.set('action', 'dafOverview');
-    const res = await fetch(`${API}?${params}`);
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'API error');
-    data = json.data;
-  } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load DAF: ${esc(e.message)}</div>`;
-    return;
-  }
-
-  destroyCharts(['dafDailyChart','dafInfractionsChart']);
-
+async function renderDAF(token) {
+  const data = await apiGet({ action: 'dafOverview' }, dafQueryExtra());
+  if (token !== navToken) return;
   document.getElementById('content').innerHTML = `
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
       <div class="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 class="text-xl font-bold text-slate-900">📋 DAF Tracker</h2>
-          <p class="text-xs text-slate-500 mt-1">Only incidents within the last 6 months are counted. Current cutoff: <strong>${esc(data.validityCutoff || '')}</strong></p>
+          <p class="text-xs text-slate-500 mt-1">Current cutoff: <strong>${esc(data.validityCutoff || '')}</strong></p>
         </div>
         <div class="flex items-center gap-3 flex-wrap">
           <label class="text-xs text-slate-500 font-medium">Filter:</label>
@@ -869,19 +754,11 @@ async function renderDAF() {
       ${dafFilterMode === 'custom' ? `
         <div class="flex items-center gap-3 flex-wrap pt-3 mt-3 border-t border-slate-200">
           <span class="text-xs text-slate-500 font-medium">From:</span>
-          <select id="dafStartMonth" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
-            ${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafStartMonth ? 'selected' : ''}>${m}</option>`).join('')}
-          </select>
-          <select id="dafStartYear" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
-            ${DAF_YEARS.map(y => `<option value="${y}" ${y === dafStartYear ? 'selected' : ''}>${y}</option>`).join('')}
-          </select>
+          <select id="dafStartMonth" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafStartMonth ? 'selected' : ''}>${m}</option>`).join('')}</select>
+          <select id="dafStartYear" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">${DAF_YEARS.map(y => `<option value="${y}" ${y === dafStartYear ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <span class="text-xs text-slate-500 font-medium">To:</span>
-          <select id="dafEndMonth" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
-            ${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafEndMonth ? 'selected' : ''}>${m}</option>`).join('')}
-          </select>
-          <select id="dafEndYear" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">
-            ${DAF_YEARS.map(y => `<option value="${y}" ${y === dafEndYear ? 'selected' : ''}>${y}</option>`).join('')}
-          </select>
+          <select id="dafEndMonth" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">${DAF_MONTHS.map(m => `<option value="${m}" ${m === dafEndMonth ? 'selected' : ''}>${m}</option>`).join('')}</select>
+          <select id="dafEndYear" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm">${DAF_YEARS.map(y => `<option value="${y}" ${y === dafEndYear ? 'selected' : ''}>${y}</option>`).join('')}</select>
         </div>
       ` : ''}
     </div>
@@ -890,47 +767,35 @@ async function renderDAF() {
       <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl p-5 shadow-sm">
         <div class="text-red-100 text-xs font-medium mb-1">TOTAL POINTS</div>
         <div class="text-3xl font-bold">${round(data.totalPoints)}</div>
-        <div class="text-red-100 text-xs mt-1">${esc(data.appliedFilter || 'Valid records only')}</div>
+        <div class="text-red-100 text-xs mt-1">${esc(data.appliedFilter || '')}</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">INCIDENTS</div>
         <div class="text-3xl font-bold text-slate-900">${data.totalIncidents}</div>
-        <div class="text-slate-400 text-xs mt-1">Raw Data entries</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">IR TRACKER</div>
         <div class="text-3xl font-bold text-slate-900">${data.totalIRs}</div>
-        <div class="text-slate-400 text-xs mt-1">IRs filed</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">AGENTS AFFECTED</div>
         <div class="text-3xl font-bold text-slate-900">${data.agentCount}</div>
-        <div class="text-slate-400 text-xs mt-1">With valid records</div>
       </div>
     </div>
 
     <div class="grid grid-cols-2 gap-5 mb-6">
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-slate-900">📈 Daily Incident Trend</h3>
-          <span class="text-xs text-slate-400">${esc(data.appliedFilter || '')}</span>
-        </div>
+        <h3 class="font-semibold text-slate-900 mb-4">📈 Daily Incident Trend</h3>
         <div class="h-72"><canvas id="dafDailyChart"></canvas></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-slate-900">🎯 Top 5 Infractions</h3>
-          <span class="text-xs text-slate-400">${esc(data.appliedFilter || '')}</span>
-        </div>
+        <h3 class="font-semibold text-slate-900 mb-4">🎯 Top 5 Infractions</h3>
         <div class="h-72"><canvas id="dafInfractionsChart"></canvas></div>
       </div>
     </div>
 
     <div class="bg-white rounded-xl p-5 shadow-sm mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-slate-900">📋 DAF Summary per Agent</h3>
-        <span class="text-xs text-slate-400">${data.summary.length} agents with valid records</span>
-      </div>
+      <h3 class="font-semibold text-slate-900 mb-4">📋 DAF Summary per Agent (${data.summary.length})</h3>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-slate-50 border-b border-slate-200">
@@ -942,7 +807,6 @@ async function renderDAF() {
               <th class="text-right px-4 py-3 font-semibold text-slate-600">Incidents</th>
               <th class="text-right px-4 py-3 font-semibold text-slate-600">IRs</th>
               <th class="text-left px-4 py-3 font-semibold text-slate-600">Last Incident</th>
-              <th class="text-center px-4 py-3 font-semibold text-slate-600">Details</th>
             </tr>
           </thead>
           <tbody>
@@ -955,29 +819,6 @@ async function renderDAF() {
                 <td class="px-4 py-2 text-right text-slate-700">${s.incidents}</td>
                 <td class="px-4 py-2 text-right text-slate-700">${s.irs}</td>
                 <td class="px-4 py-2 text-xs text-slate-500">${esc(s.lastIncident || '—')}</td>
-                <td class="px-4 py-2 text-center">
-                  <button onclick="toggleDAFDetails(${i})" class="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700">View</button>
-                </td>
-              </tr>
-              <tr id="dafDetails-${i}" class="hidden">
-                <td colspan="8" class="bg-slate-50 px-6 py-4">
-                  ${s.irDetails && s.irDetails.length > 0 ? `
-                    <div class="space-y-2">
-                      <div class="text-xs font-semibold text-slate-500 uppercase mb-2">IR Records</div>
-                      ${s.irDetails.map(d => `
-                        <div class="bg-white rounded border border-slate-200 p-3 text-xs">
-                          <div class="flex justify-between mb-1">
-                            <span class="font-semibold text-slate-800">${esc(d.violation || 'Violation')}</span>
-                            <span class="text-slate-400">${esc(d.date)}</span>
-                          </div>
-                          ${d.action ? `<div class="text-slate-600 mt-1"><strong>Action:</strong> ${esc(d.action)}</div>` : ''}
-                          ${d.details ? `<div class="text-slate-600 mt-1"><strong>Details:</strong> ${esc(d.details)}</div>` : ''}
-                          ${d.remarks ? `<div class="text-slate-500 mt-1 italic">${esc(d.remarks)}</div>` : ''}
-                        </div>
-                      `).join('')}
-                    </div>
-                  ` : '<div class="text-xs text-slate-400">No IR records for this agent.</div>'}
-                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -993,9 +834,7 @@ async function renderDAF() {
           <span id="dafRawSaveStatus" class="text-xs font-medium"></span>
         </div>
       </div>
-      <div id="dafRawGrid" class="overflow-x-auto p-4">
-        <div class="text-center py-10 text-slate-400">Loading Raw Data...</div>
-      </div>
+      <div id="dafRawGrid" class="overflow-x-auto p-4"><div class="text-center py-10 text-slate-400">Loading...</div></div>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm">
@@ -1006,160 +845,35 @@ async function renderDAF() {
           <span id="dafIRSaveStatus" class="text-xs font-medium"></span>
         </div>
       </div>
-      <div id="dafIRGrid" class="overflow-x-auto p-4">
-        <div class="text-center py-10 text-slate-400">Loading IR Tracker...</div>
-      </div>
+      <div id="dafIRGrid" class="overflow-x-auto p-4"><div class="text-center py-10 text-slate-400">Loading...</div></div>
     </div>
   `;
 
   const daily = data.dailyTrend || [];
-  new Chart(document.getElementById('dafDailyChart'), {
+  makeChart(document.getElementById('dafDailyChart'), {
     type: 'line',
-    data: { labels: daily.map(d => d.date.slice(5)), datasets: [{ label: 'Incidents', data: daily.map(d => d.count), borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.15)', borderWidth: 3, fill: true, tension: 0.3, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#dc2626' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} incidents on ${daily[ctx.dataIndex].date}` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Incidents' } }, x: { title: { display: true, text: 'Date (MM-DD)' } } } }
+    data: { labels: daily.map(d => d.date.slice(5)), datasets: [{ label: 'Incidents', data: daily.map(d => d.count), borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.15)', borderWidth: 3, fill: true, tension: 0.3, pointRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
   });
-
   const infr = data.topInfractions || [];
-  new Chart(document.getElementById('dafInfractionsChart'), {
+  makeChart(document.getElementById('dafInfractionsChart'), {
     type: 'bar',
     data: { labels: infr.map(i => i.name.length > 30 ? i.name.slice(0, 27) + '…' : i.name), datasets: [{ label: 'Count', data: infr.map(i => i.count), backgroundColor: ['#991b1b', '#dc2626', '#ef4444', '#f87171', '#fca5a5'], borderRadius: 6 }] },
-    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: (ctx) => infr[ctx[0].dataIndex].name, label: (ctx) => `${ctx.parsed.x} incidents` } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Count' } }, y: { ticks: { font: { size: 11 } } } } }
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
   });
 
-  document.getElementById('dafFilterMode').addEventListener('change', (e) => {
-    dafFilterMode = e.target.value;
-    renderDAF();
-  });
+  document.getElementById('dafFilterMode').addEventListener('change', (e) => { dafFilterMode = e.target.value; navigate('daf'); });
   const sm = document.getElementById('dafStartMonth');
   const sy = document.getElementById('dafStartYear');
   const em = document.getElementById('dafEndMonth');
   const ey = document.getElementById('dafEndYear');
-  if (sm) sm.addEventListener('change', (e) => { dafStartMonth = e.target.value; renderDAF(); });
-  if (sy) sy.addEventListener('change', (e) => { dafStartYear = e.target.value; renderDAF(); });
-  if (em) em.addEventListener('change', (e) => { dafEndMonth = e.target.value; renderDAF(); });
-  if (ey) ey.addEventListener('change', (e) => { dafEndYear = e.target.value; renderDAF(); });
+  if (sm) sm.addEventListener('change', (e) => { dafStartMonth = e.target.value; navigate('daf'); });
+  if (sy) sy.addEventListener('change', (e) => { dafStartYear = e.target.value; navigate('daf'); });
+  if (em) em.addEventListener('change', (e) => { dafEndMonth = e.target.value; navigate('daf'); });
+  if (ey) ey.addEventListener('change', (e) => { dafEndYear = e.target.value; navigate('daf'); });
 
   await renderDAFGrid('raw');
   await renderDAFGrid('ir');
-}
-
-function toggleDAFDetails(idx) {
-  const row = document.getElementById('dafDetails-' + idx);
-  if (row) row.classList.toggle('hidden');
-}
-window.toggleDAFDetails = toggleDAFDetails;
-
-// ============ DAF GHOST ROW + MULTI-SELECT HIDE ============
-const ghostRowState = {
-  raw: { active: false, values: [] },
-  ir:  { active: false, values: [] }
-};
-const gridHeaders = { raw: [], ir: [] };
-const hiddenRows = { raw: new Set(), ir: new Set() };
-const selectedRows = { raw: new Set(), ir: new Set() };
-const lastClickedRow = { raw: null, ir: null };
-const showHidden = { raw: false, ir: false };
-const visibleRowNumbers = { raw: [], ir: [] };
-
-function activateGhostRow(which) {
-  ghostRowState[which].active = true;
-  ghostRowState[which].values = [];
-  renderDAFGrid(which);
-}
-
-function cancelGhostRow(which) {
-  ghostRowState[which].active = false;
-  ghostRowState[which].values = [];
-  renderDAFGrid(which);
-}
-
-function setGhostValue(which, colIdx, value) {
-  ghostRowState[which].values[colIdx] = value;
-}
-
-async function saveGhostRow(which) {
-  const state = ghostRowState[which];
-  const values = state.values || [];
-  const isEmpty = values.every(v => !String(v || '').trim());
-  if (isEmpty) { cancelGhostRow(which); return; }
-
-  const action = which === 'raw' ? 'addDAFRow' : 'addIRRow';
-  const statusId = which === 'raw' ? 'dafRawSaveStatus' : 'dafIRSaveStatus';
-  const st = document.getElementById(statusId);
-  if (st) { st.textContent = 'Saving...'; st.className = 'text-xs font-medium text-slate-500'; }
-
-  try {
-    const headers = gridHeaders[which] || [];
-    const padded = [];
-    for (let i = 0; i < headers.length; i++) {
-      padded.push(values[i] !== undefined ? values[i] : '');
-    }
-    await apiPost({ action, values: padded, email: EMAIL });
-    ghostRowState[which].active = false;
-    ghostRowState[which].values = [];
-    clientCache.clear();
-    if (st) { st.textContent = '✓ Row added'; st.className = 'text-xs font-medium text-green-600'; setTimeout(() => { st.textContent = ''; }, 2000); }
-    await renderDAF();
-  } catch (e) {
-    if (st) { st.textContent = 'Add failed: ' + e.message; st.className = 'text-xs font-medium text-red-600'; }
-  }
-}
-
-function toggleRowSelection(which, rowNumber, shiftKey) {
-  const sel = selectedRows[which];
-  const anchor = lastClickedRow[which];
-
-  if (shiftKey && anchor !== null) {
-    const visible = visibleRowNumbers[which];
-    const a = visible.indexOf(anchor);
-    const b = visible.indexOf(rowNumber);
-    if (a !== -1 && b !== -1) {
-      const [start, end] = a < b ? [a, b] : [b, a];
-      for (let i = start; i <= end; i++) sel.add(visible[i]);
-      renderDAFGrid(which);
-      return;
-    }
-  }
-
-  if (sel.has(rowNumber)) sel.delete(rowNumber);
-  else sel.add(rowNumber);
-  lastClickedRow[which] = rowNumber;
-  renderDAFGrid(which);
-}
-
-function hideSelected(which) {
-  const sel = selectedRows[which];
-  if (sel.size === 0) return;
-  sel.forEach(rn => hiddenRows[which].add(rn));
-  sel.clear();
-  lastClickedRow[which] = null;
-  renderDAFGrid(which);
-}
-
-function toggleShowHidden(which) {
-  showHidden[which] = !showHidden[which];
-  renderDAFGrid(which);
-}
-
-function unhideAll(which) {
-  hiddenRows[which].clear();
-  showHidden[which] = false;
-  renderDAFGrid(which);
-}
-
-function clearSelection(which) {
-  selectedRows[which].clear();
-  lastClickedRow[which] = null;
-  renderDAFGrid(which);
-}
-
-function selectAllVisible(which) {
-  const all = visibleRowNumbers[which];
-  const sel = selectedRows[which];
-  const allSelected = all.length > 0 && all.every(rn => sel.has(rn));
-  if (allSelected) sel.clear();
-  else all.forEach(rn => sel.add(rn));
-  renderDAFGrid(which);
 }
 
 async function renderDAFGrid(which) {
@@ -1169,25 +883,8 @@ async function renderDAFGrid(which) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  let grid;
-  try {
-    const params = dafQuery();
-    params.set('action', action);
-    const res = await fetch(`${API}?${params}`);
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'API error');
-    grid = json.data;
-  } catch (e) {
-    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load: ${esc(e.message)}</div>`;
-    return;
-  }
-
-  if (grid.error) {
-    container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`;
-    return;
-  }
-
-  gridHeaders[which] = grid.headers || [];
+  const grid = await apiGet({ action }, dafQueryExtra());
+  if (grid.error) { container.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(grid.error)}</div>`; return; }
   const validColIdx = grid.headers.findIndex(h => String(h || '').toLowerCase().trim() === 'valid');
 
   function fmtCell(v, colIdx) {
@@ -1200,165 +897,55 @@ async function renderDAFGrid(which) {
     return esc(v) || '<span class="text-slate-300">—</span>';
   }
 
-  const allRows = grid.rows || [];
-  const hidden = hiddenRows[which];
-  const show = showHidden[which];
+  let html = `<table class="w-full text-xs" style="border-collapse: collapse;">
+    <thead class="bg-slate-100">
+      <tr>
+        <th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 bg-slate-200">Row</th>
+        ${grid.headers.map(h => `<th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 whitespace-nowrap">${esc(h)}</th>`).join('')}
+      </tr>
+    </thead><tbody>`;
 
-  const displayedRows = allRows.filter(r => {
-    const isHidden = hidden.has(r.rowNumber);
-    return show ? true : !isHidden;
-  });
-
-  visibleRowNumbers[which] = displayedRows.map(r => r.rowNumber);
-
-  const presentRows = new Set(allRows.map(r => r.rowNumber));
-  selectedRows[which].forEach(rn => { if (!presentRows.has(rn)) selectedRows[which].delete(rn); });
-  hidden.forEach(rn => { if (!presentRows.has(rn)) hidden.delete(rn); });
-
-  const hiddenCount = hidden.size;
-  const selectedCount = selectedRows[which].size;
-  const allVisibleSelected = visibleRowNumbers[which].length > 0 &&
-    visibleRowNumbers[which].every(rn => selectedRows[which].has(rn));
-
-  let toolbarHtml = `
-    <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
-      <div class="text-xs text-slate-500">
-        Check rows to select · <strong>Shift+Click</strong> for range · <strong>Ctrl/Cmd+Click</strong> to add
-      </div>
-      <div class="flex items-center gap-2">
-        ${selectedCount > 0 ? `<button onclick="clearSelection('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700">Clear (${selectedCount})</button>` : ''}
-        ${selectedCount > 0 ? `<button onclick="hideSelected('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium">Hide selected (${selectedCount})</button>` : ''}
-        ${hiddenCount > 0 ? `<button onclick="toggleShowHidden('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-medium">${show ? 'Hide' : 'Show'} hidden (${hiddenCount})</button>` : ''}
-        ${hiddenCount > 0 ? `<button onclick="unhideAll('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700">Reset</button>` : ''}
-        <button onclick="activateGhostRow('${which}')" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition">+ Add Row</button>
-      </div>
-    </div>
-  `;
-
-  let html = toolbarHtml + `
-    <table class="w-full text-xs" style="border-collapse: collapse;">
-      <thead class="bg-slate-100">
-        <tr>
-          <th class="px-2 py-2 border border-slate-200 bg-slate-200" style="width:32px;">
-            <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="selectAllVisible('${which}')" title="Select all" style="cursor:pointer;" />
-          </th>
-          <th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 bg-slate-200">Row</th>
-          ${grid.headers.map(h => `<th class="px-2 py-2 text-left font-semibold text-slate-600 border border-slate-200 whitespace-nowrap">${esc(h)}</th>`).join('')}
-        </tr>
-      </thead>
-      <tbody>
-  `;
-
-  if (displayedRows.length === 0) {
-    const msg = allRows.length === 0
-      ? 'No rows match the current filter.'
-      : (hiddenCount > 0 && !show ? 'All rows in this filter are hidden. Click "Show hidden" to bring them back.' : 'No rows to display.');
-    html += `<tr><td colspan="${grid.headers.length + 2}" class="px-2 py-4 text-slate-400 text-center">${msg}</td></tr>`;
+  if (!grid.rows || grid.rows.length === 0) {
+    html += `<tr><td colspan="${grid.headers.length + 1}" class="px-2 py-4 text-slate-400 text-center">No rows match the current filter.</td></tr>`;
   }
-
-  displayedRows.forEach(r => {
-    const isHidden = hidden.has(r.rowNumber);
-    const isSelected = selectedRows[which].has(r.rowNumber);
-    const rowClass = isSelected ? 'bg-blue-100' : (isHidden ? 'bg-slate-100 opacity-60' : 'hover:bg-slate-50');
-    html += `<tr class="${rowClass}">`;
-    html += `<td class="px-2 py-1 text-center border border-slate-200 bg-slate-50" style="width:32px;">
-      <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleRowSelection('${which}', ${r.rowNumber}, event.shiftKey)" style="cursor:pointer;" />
-    </td>`;
+  (grid.rows || []).forEach(r => {
+    html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="px-2 py-1 text-slate-400 border border-slate-200 bg-slate-50">${r.rowNumber}</td>`;
     r.cells.forEach((v, ci) => {
       const display = fmtCell(v, ci);
-      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="event.stopPropagation(); editDAFCell(this)">${display}</td>`;
+      html += `<td class="daf-edit-cell" style="padding:4px 6px; border: 1px solid #e2e8f0; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tab="${esc(grid.tabName)}" data-row="${r.rowNumber}" data-col="${ci}" data-value="${esc(v)}" title="${esc(v)}" onclick="editDAFCell(this)">${display}</td>`;
     });
     html += `</tr>`;
   });
-
-  if (ghostRowState[which].active) {
-    html += `<tr style="background:#eff6ff;" id="ghostRow-${which}">`;
-    html += `<td class="px-2 py-1 border border-blue-200 bg-blue-50"></td>`;
-    html += `<td class="px-2 py-1 text-blue-600 font-semibold border border-blue-200 text-center">NEW</td>`;
-    grid.headers.forEach((h, ci) => {
-      const val = ghostRowState[which].values[ci] || '';
-      const isLast = ci === grid.headers.length - 1;
-      html += `<td class="border border-blue-200" style="padding:0;">
-        <input
-          type="text"
-          class="ghost-input w-full text-xs px-1.5 py-1 border-0 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-transparent"
-          data-which="${which}"
-          data-col="${ci}"
-          value="${esc(val)}"
-          placeholder="${esc(h)}"
-          oninput="setGhostValue('${which}', ${ci}, this.value)"
-          onkeydown="handleGhostKey(event, '${which}', ${ci}, ${grid.headers.length}, ${isLast})"
-        />
-      </td>`;
-    });
-    html += `</tr>`;
-
-    html += `<tr style="background:#eff6ff;"><td colspan="${grid.headers.length + 2}" class="px-2 py-2 text-right border border-blue-200">
-      <span class="text-xs text-blue-600 mr-3">Press <strong>Enter</strong> in the last cell to save, <strong>Esc</strong> to cancel</span>
-      <button onclick="cancelGhostRow('${which}')" class="text-xs px-3 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 mr-2">✗ Cancel</button>
-      <button onclick="saveGhostRow('${which}')" class="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium">✓ Save</button>
-    </td></tr>`;
-  }
-
   html += `</tbody></table>`;
   container.innerHTML = html;
   container.dataset.saveStatusId = saveStatusId;
-
-  if (ghostRowState[which].active) {
-    const first = container.querySelector('.ghost-input');
-    if (first) first.focus();
-  }
-}
-
-function handleGhostKey(ev, which, colIdx, totalCols, isLast) {
-  if (ev.key === 'Escape') {
-    ev.preventDefault();
-    cancelGhostRow(which);
-    return;
-  }
-  if (ev.key === 'Enter') {
-    ev.preventDefault();
-    if (isLast) {
-      saveGhostRow(which);
-    } else {
-      const next = ev.target.closest('td').nextElementSibling?.querySelector('input');
-      if (next) next.focus();
-      else saveGhostRow(which);
-    }
-    return;
-  }
-  if (ev.key === 'Tab' && !ev.shiftKey && isLast) {
-    ev.preventDefault();
-    saveGhostRow(which);
-  }
 }
 
 async function editDAFCell(td) {
   if (td.dataset.editing === '1') return;
+  td.dataset.editing = '1';
   const colIdx = Number(td.dataset.col);
   const tabName = td.dataset.tab;
   const isRawValid = tabName === 'Raw Data' && colIdx === 4;
-
   const rawValue = td.dataset.value || '';
-  const currentValue = isRawValid
-    ? (String(rawValue).toLowerCase() === 'true' ? '✓' : '')
-    : rawValue;
-
+  const currentValue = isRawValid ? (String(rawValue).toLowerCase() === 'true' ? '✓' : '') : rawValue;
   const originalHtml = td.innerHTML;
 
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'w-full text-xs px-1 py-0.5 border border-blue-400 rounded';
   input.value = currentValue;
-  if (isRawValid) input.placeholder = '✓ or leave blank';
+  if (isRawValid) input.placeholder = '✓ or blank';
   td.innerHTML = '';
   td.appendChild(input);
-  td.dataset.editing = '1';
   input.focus();
   input.select();
 
+  let done = false;
   const commit = async () => {
+    if (done) return;
+    done = true;
     let newValue = input.value.trim();
     if (isRawValid) {
       const truthy = ['✓', 'true', 'yes', 'y', '1', 'x'];
@@ -1368,21 +955,9 @@ async function editDAFCell(td) {
     if (newValue === rawValue) { td.innerHTML = originalHtml; return; }
     td.style.background = '#fef3c7';
     try {
-      await apiPost({
-        action: 'updateDAFCell',
-        tabName: td.dataset.tab,
-        rowNumber: td.dataset.row,
-        colIndex: td.dataset.col,
-        value: newValue,
-        email: EMAIL
-      });
+      await apiPost({ action: 'updateDAFCell', tabName: td.dataset.tab, rowNumber: td.dataset.row, colIndex: td.dataset.col, value: newValue });
       td.dataset.value = newValue;
-      let display;
-      if (isRawValid) {
-        display = newValue === 'TRUE' ? '✓' : '—';
-      } else {
-        display = esc(newValue) || '<span class="text-slate-300">—</span>';
-      }
+      let display = isRawValid ? (newValue === 'TRUE' ? '✓' : '—') : (esc(newValue) || '<span class="text-slate-300">—</span>');
       td.innerHTML = display;
       td.style.background = '#d1fae5';
       setTimeout(() => { td.style.background = ''; }, 1000);
@@ -1392,6 +967,7 @@ async function editDAFCell(td) {
         const st = document.getElementById(stId);
         if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; setTimeout(() => { st.textContent = ''; }, 1500); }
       }
+      dataCache.clear();
     } catch (e) {
       td.style.background = '#fee2e2';
       td.innerHTML = originalHtml;
@@ -1403,41 +979,23 @@ async function editDAFCell(td) {
       }
     }
   };
-
-  input.addEventListener('blur', commit);
+  input.addEventListener('blur', () => { if (!done) commit(); });
   input.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') input.blur();
-    if (ev.key === 'Escape') { td.dataset.editing = '0'; td.innerHTML = originalHtml; }
+    if (ev.key === 'Escape') { done = true; td.dataset.editing = '0'; td.innerHTML = originalHtml; }
   });
 }
 window.editDAFCell = editDAFCell;
 
-window.activateGhostRow = activateGhostRow;
-window.cancelGhostRow = cancelGhostRow;
-window.setGhostValue = setGhostValue;
-window.saveGhostRow = saveGhostRow;
-window.handleGhostKey = handleGhostKey;
-window.toggleRowSelection = toggleRowSelection;
-window.hideSelected = hideSelected;
-window.toggleShowHidden = toggleShowHidden;
-window.unhideAll = unhideAll;
-window.clearSelection = clearSelection;
-window.selectAllVisible = selectAllVisible;
-
 // ============ NAVIGATION ============
-const comingSoon = async () => {
-  document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>';
-};
-
 const renderers = {
   overview: renderOverview, kpi: renderKPI, markdowns: renderMarkdowns,
   teams: renderTeams, agents: renderAgents,
-  attendance: renderAttendance,
-  daf: renderDAF,
-  appointments: comingSoon, users: comingSoon,
+  attendance: renderAttendance, daf: renderDAF,
+  appointments: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
+  users: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; }
 };
 
-// Prevents a slow render from clobbering the UI after the user has navigated away
 let navToken = 0;
 
 async function navigate(page) {
@@ -1445,29 +1003,25 @@ async function navigate(page) {
   currentPage = page;
 
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-  const labels = { overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics', teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance', daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users' };
-  document.getElementById('pageTitle').textContent = labels[page] || page;
+  document.getElementById('pageTitle').textContent = PAGE_LABELS[page] || page;
 
-  const simpleFetches = { kpi: 'kpi', markdowns: 'markdowns', teams: 'teams', agents: 'agents', overview: 'overviewFull' };
-  const cacheKey = simpleFetches[page];
-  const alreadyCached = cacheKey ? clientCache.has(cacheKey, currentPeriod, page === 'markdowns' ? { scope: 'all' } : {}) : true;
-  const isSlowPage = (page === 'attendance' || page === 'daf');
-  const showBar = isSlowPage || !alreadyCached;
-  if (showBar) { showLoadingBar(); setLoadingStatus(0, 1, labels[page]); }
-
+  destroyAllCharts();
+  setDot(page, 'loading');
+  showOverlay('Loading ' + (PAGE_LABELS[page] || page), 'Please wait...');
   document.getElementById('content').innerHTML = '<div class="text-center py-20 text-slate-400">Loading...</div>';
 
   try {
-    await renderers[page]();
-    if (myToken !== navToken) return; // user navigated away mid-render; discard this result
-    if (showBar) { setLoadingStatus(1, 1, labels[page]); await new Promise(r => setTimeout(r, 250)); hideLoadingBar(); }
-    const stats = clientCache.getStats();
-    document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod} · Cache: ${Math.round(stats.hitRate)}% hit rate`;
-    showToast(labels[page] || page);
+    await renderers[page](myToken);
+    if (myToken !== navToken) return;
+    setDot(page, 'ready');
+    document.getElementById('lastSync').textContent = `Last synced ${new Date().toLocaleString()} · ${currentPeriod}`;
+    showToast(PAGE_LABELS[page] || page);
   } catch (e) {
     if (myToken !== navToken) return;
-    if (showBar) hideLoadingBar();
-    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Error: ${esc(e.message)}</div>`;
+    setDot(page, 'error');
+    showError('Failed to load ' + (PAGE_LABELS[page] || page), e.message || 'Unknown error', () => navigate(page));
+  } finally {
+    if (myToken === navToken) hideOverlay();
   }
 }
 
@@ -1476,54 +1030,38 @@ document.querySelectorAll('.sidebar-item').forEach(el => {
 });
 
 document.querySelectorAll('.period-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
+  btn.addEventListener('click', () => {
     periodMode = btn.dataset.mode;
     document.querySelectorAll('.period-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.mode === periodMode);
       b.classList.toggle('text-slate-600', b.dataset.mode !== periodMode);
     });
     populatePeriodSelect();
-    await prefetchAll();
     navigate(currentPage);
   });
 });
 
-document.getElementById('periodSelect').addEventListener('change', async (e) => {
+document.getElementById('periodSelect').addEventListener('change', (e) => {
   currentPeriod = e.target.value;
-  await prefetchAll();
   navigate(currentPage);
 });
 
-document.getElementById('clearCacheBtn').addEventListener('click', () => {
-  clientCache.clear();
-  prefetchAll().then(() => navigate(currentPage));
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  dataCache.clear();
+  Object.keys(PAGE_LABELS).forEach(p => setDot(p, 'idle'));
+  navigate(currentPage);
 });
 
+// ============ BOOT ============
 (async () => {
   try {
-    showLoadingBar();
-    setLoadingStatus(0, PREFETCH_ACTIONS.length + 1, 'Periods');
+    showOverlay('Connecting', 'Fetching periods...');
     await loadPeriods();
-    if (PERIODS.month && PERIODS.month.length) {
-      if (!PERIODS.month.includes(currentPeriod)) currentPeriod = PERIODS.month[0];
-    }
-    populatePeriodSelect();
-    setLoadingStatus(1, PREFETCH_ACTIONS.length + 1, 'Overview');
-    const pending = PREFETCH_ACTIONS.filter(p => !clientCache.has(p.action, currentPeriod, p.extra || {}));
-    const total = PREFETCH_ACTIONS.length + 1;
-    let completed = 1;
-    await Promise.all(pending.map(async (p) => {
-      try { await api(p.action, p.extra || {}); } catch (e) { console.warn(e); }
-      completed++;
-      setLoadingStatus(completed, total, p.label);
-    }));
-    setLoadingStatus(total, total, '');
-    await new Promise(r => setTimeout(r, 400));
-    hideLoadingBar();
+    hideOverlay();
     navigate('overview');
   } catch (e) {
-    hideLoadingBar();
-    document.getElementById('content').innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-lg">Failed to load: ${esc(e.message)}</div>`;
+    hideOverlay();
+    showError('Cannot connect to backend', e.message || 'The API did not respond.', () => location.reload());
   }
 })();
 </script>
