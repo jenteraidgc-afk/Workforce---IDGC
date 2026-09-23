@@ -47,11 +47,11 @@
       <a href="#" data-page="attendance" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📅</span><span>Attendance</span><span class="status-dot dot-idle" data-dot="attendance"></span></a>
       <a href="#" data-page="daf" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>📋</span><span>DAF Tracker</span><span class="status-dot dot-idle" data-dot="daf"></span></a>
       <a href="#" data-page="appointments" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>🗓️</span><span>Appointments</span><span class="status-dot dot-idle" data-dot="appointments"></span></a>
-      <a href="#" data-page="users" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition"><span>⚙️</span><span>Users</span><span class="status-dot dot-idle" data-dot="users"></span></a>
     </nav>
-    <div class="p-4 border-t border-slate-800 text-xs">
-      <div class="text-slate-400 truncate">jentera.idgc@gmail.com</div>
-      <div class="text-slate-500 text-[10px] mt-1" id="cacheStatus">Ready</div>
+    <div class="p-4 border-t border-slate-800 text-xs space-y-2">
+      <div class="text-slate-300 truncate font-medium" id="userEmail">—</div>
+      <div class="text-slate-500 text-[10px] uppercase tracking-wide" id="userRole">—</div>
+      <button id="logoutBtn" class="w-full text-left text-slate-400 hover:text-white text-xs py-1">Sign out →</button>
     </div>
   </aside>
 
@@ -73,11 +73,35 @@
         <button id="refreshBtn" class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium hover:bg-slate-50 transition" title="Reload current page">🔄</button>
       </div>
     </div>
-
     <div id="content">
       <div class="text-center py-20 text-slate-400">Loading...</div>
     </div>
   </main>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="hidden fixed inset-0 bg-slate-100 z-[100] flex items-center justify-center p-6">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">WF</div>
+      <div>
+        <div class="text-slate-900 font-semibold">WORKFORCE</div>
+        <div class="text-slate-500 text-xs">Sign in to continue</div>
+      </div>
+    </div>
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
+        <input id="loginEmail" type="email" autocomplete="username" required class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:outline-none text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Password</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" required class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:outline-none text-sm" />
+      </div>
+      <div id="loginError" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5"></div>
+      <button id="loginBtn" type="submit" class="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition">Sign in</button>
+    </form>
+  </div>
 </div>
 
 <div id="agentModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center overflow-y-auto p-8">
@@ -100,9 +124,10 @@
 
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbzkAS-C4KUmrGca9LgO-VzJ0SUhlq3d6wpL0gLJ2MVvNzgVKgfyBZqHkRgvgY_xzhf9/exec';
-const EMAIL = 'jentera.idgc@gmail.com';
 const FETCH_TIMEOUT_MS = 60000;
+const TOKEN_KEY = 'wf_session_token';
 
+let session = null; // { token, email, name, role }
 let currentPage = 'overview';
 let periodMode = 'month';
 let currentPeriod = '';
@@ -113,13 +138,12 @@ let currentAttendanceTabName = '';
 const PAGE_LABELS = {
   overview: 'Dashboard Overview', kpi: 'KPI Report', markdowns: 'Markdown Analytics',
   teams: 'Team Management', agents: 'Agents / CSRs', attendance: 'Attendance',
-  daf: 'DAF Tracker', appointments: 'Appointments', users: 'Users'
+  daf: 'DAF Tracker', appointments: 'Appointments'
 };
 
 // ============ DATA CACHE ============
-const dataCache = new Map(); // key → { ts, data }
+const dataCache = new Map();
 const DATA_TTL = 5 * 60 * 1000;
-
 function cacheKey(action, extra) { return action + '|' + JSON.stringify(extra || {}); }
 function cacheGet(key) {
   const hit = dataCache.get(key);
@@ -130,6 +154,19 @@ function cacheGet(key) {
 function cacheSet(key, data) { dataCache.set(key, { ts: Date.now(), data }); }
 function cacheClear() { dataCache.clear(); }
 
+// ============ SESSION ============
+function getStoredToken() {
+  try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+}
+function setStoredToken(t) {
+  try { if (t) sessionStorage.setItem(TOKEN_KEY, t); else sessionStorage.removeItem(TOKEN_KEY); } catch (e) {}
+}
+function clearSession() {
+  session = null;
+  setStoredToken('');
+  dataCache.clear();
+}
+
 // ============ FETCH ============
 function fetchWithTimeout(url, opts, ms) {
   const ctrl = new AbortController();
@@ -139,16 +176,18 @@ function fetchWithTimeout(url, opts, ms) {
 }
 
 async function apiGet(paramsObj, extra) {
-  // FIX: capture period at call time so a mid-flight change can't poison cache
   const period = currentPeriod;
   const key = cacheKey(paramsObj.action, Object.assign({ period }, extra || {}));
   const hit = cacheGet(key);
   if (hit) return hit;
-  const params = new URLSearchParams({ email: EMAIL, ...paramsObj });
+  const params = new URLSearchParams({ token: session.token, ...paramsObj });
   const res = await fetchWithTimeout(`${API}?${params}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
+  if (!json.ok) {
+    if (json.error === 'SESSION_EXPIRED') { handleSessionExpired(); throw new Error('Session expired — please sign in again'); }
+    throw new Error(json.error || 'API error');
+  }
   cacheSet(key, json.data);
   return json.data;
 }
@@ -157,11 +196,14 @@ async function apiPost(payload) {
   const res = await fetchWithTimeout(API, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ email: EMAIL, ...payload })
+    body: JSON.stringify({ token: session.token, ...payload })
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
+  if (!json.ok) {
+    if (json.error === 'SESSION_EXPIRED') { handleSessionExpired(); throw new Error('Session expired — please sign in again'); }
+    throw new Error(json.error || 'API error');
+  }
   return json.data;
 }
 
@@ -172,7 +214,6 @@ function badge(v, good, warn) {
   const c = v >= good ? 'text-green-600' : v >= warn ? 'text-amber-600' : 'text-red-600';
   return `<span class="${c} font-semibold">${round(v)}</span>`;
 }
-
 function setDot(page, state) {
   const dot = document.querySelector(`[data-dot="${page}"]`);
   if (!dot) return;
@@ -220,7 +261,6 @@ function showError(title, message, retryFn) {
 const chartRegistry = [];
 function makeChart(canvasEl, config) {
   if (!canvasEl) return;
-  // Destroy any existing chart on this canvas first
   const existing = Chart.getChart(canvasEl);
   if (existing) existing.destroy();
   const c = new Chart(canvasEl, config);
@@ -233,22 +273,63 @@ function destroyAllCharts() {
   }
 }
 
-// ============ PERIODS ============
-async function loadPeriods() {
-  PERIODS = await apiGet({ action: 'periods' });
-  const list = PERIODS.month || [];
-  if (list.length && !list.includes(currentPeriod)) currentPeriod = list[0];
-  populatePeriodSelect();
+// ============ LOGIN FLOW ============
+function showLogin() {
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+function hideLogin() {
+  document.getElementById('loginScreen').classList.add('hidden');
+}
+function setLoginError(msg) {
+  const el = document.getElementById('loginError');
+  if (!msg) { el.classList.add('hidden'); el.textContent = ''; return; }
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function handleSessionExpired() {
+  clearSession();
+  showLogin();
+  setLoginError('Your session expired. Please sign in again.');
 }
 
-function populatePeriodSelect() {
-  const sel = document.getElementById('periodSelect');
-  const list = PERIODS[periodMode] || [];
-  if (!list.length) { sel.innerHTML = '<option value="">No data</option>'; return; }
-  sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
-  if (list.includes(currentPeriod)) sel.value = currentPeriod;
-  else { currentPeriod = list[0]; sel.value = currentPeriod; }
+async function submitLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  setLoginError('');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  try {
+    const res = await fetchWithTimeout(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'login', email, password })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Login failed');
+    session = { token: json.data.token, email: json.data.email, name: json.data.name, role: json.data.role };
+    setStoredToken(session.token);
+    document.getElementById('userEmail').textContent = session.email;
+    document.getElementById('userRole').textContent = session.role || 'viewer';
+    document.getElementById('loginPassword').value = '';
+    hideLogin();
+    await boot();
+  } catch (err) {
+    setLoginError(err.message || 'Invalid email or password');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
 }
+document.getElementById('loginForm').addEventListener('submit', submitLogin);
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try { await apiGet({ action: 'logout' }); } catch (e) {}
+  clearSession();
+  showLogin();
+});
 
 // ============ AGENT MODAL ============
 async function openAgentProfile(name) {
@@ -354,7 +435,6 @@ window.openAgentProfile = openAgentProfile;
 window.closeAgentModal = closeAgentModal;
 document.getElementById('agentModal').addEventListener('click', (e) => { if (e.target.id === 'agentModal') closeAgentModal(); });
 
-// ============ DELEGATED CLICK FOR AGENT LINKS (XSS fix) ============
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-agent-name]');
   if (!el) return;
@@ -371,7 +451,7 @@ async function renderOverview(token) {
       <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl p-5 shadow-sm">
         <div class="text-blue-100 text-xs font-medium mb-1">HEADCOUNT</div>
         <div class="text-3xl font-bold">${data.headcount || 0}</div>
-        <div class="text-blue-100 text-xs mt-1">Agents audited (last ${3} months)</div>
+        <div class="text-blue-100 text-xs mt-1">Agents audited (last 3 months)</div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm">
         <div class="text-slate-500 text-xs font-medium mb-1">AVG QA SCORE</div>
@@ -691,7 +771,6 @@ async function editAttendanceCell(td) {
       const st = document.getElementById('saveStatus');
       if (st) { st.textContent = '✓ Saved'; st.className = 'text-xs font-medium text-green-600'; }
       setTimeout(() => { td.classList.remove('saved'); if (st) st.textContent = ''; }, 1500);
-      // Invalidate caches that might contain the stale attendance data
       dataCache.clear();
     } catch (e) {
       td.classList.remove('saving');
@@ -992,8 +1071,7 @@ const renderers = {
   overview: renderOverview, kpi: renderKPI, markdowns: renderMarkdowns,
   teams: renderTeams, agents: renderAgents,
   attendance: renderAttendance, daf: renderDAF,
-  appointments: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; },
-  users: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; }
+  appointments: async () => { document.getElementById('content').innerHTML = '<div class="text-slate-400 text-center py-20">Coming soon</div>'; }
 };
 
 let navToken = 0;
@@ -1053,16 +1131,55 @@ document.getElementById('refreshBtn').addEventListener('click', () => {
 });
 
 // ============ BOOT ============
-(async () => {
+async function loadPeriods() {
+  PERIODS = await apiGet({ action: 'periods' });
+  const list = PERIODS.month || [];
+  if (list.length && !list.includes(currentPeriod)) currentPeriod = list[0];
+  populatePeriodSelect();
+}
+function populatePeriodSelect() {
+  const sel = document.getElementById('periodSelect');
+  const list = PERIODS[periodMode] || [];
+  if (!list.length) { sel.innerHTML = '<option value="">No data</option>'; return; }
+  sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (list.includes(currentPeriod)) sel.value = currentPeriod;
+  else { currentPeriod = list[0]; sel.value = currentPeriod; }
+}
+
+async function boot() {
+  showOverlay('Connecting', 'Fetching periods...');
   try {
-    showOverlay('Connecting', 'Fetching periods...');
     await loadPeriods();
     hideOverlay();
     navigate('overview');
   } catch (e) {
     hideOverlay();
+    if (String(e.message).indexOf('Session expired') !== -1) return;
     showError('Cannot connect to backend', e.message || 'The API did not respond.', () => location.reload());
   }
+}
+
+(async () => {
+  // Try restoring a stored token
+  const stored = getStoredToken();
+  if (stored) {
+    // We don't know the role/email yet; fetch /me via a quick ping-like call
+    session = { token: stored, email: '', name: '', role: '' };
+    try {
+      const me = await apiGet({ action: 'me' });
+      session.email = me.email;
+      session.name = me.name;
+      session.role = me.role;
+      document.getElementById('userEmail').textContent = session.email;
+      document.getElementById('userRole').textContent = session.role || 'viewer';
+      await boot();
+      return;
+    } catch (e) {
+      // Token was bad — fall through to login
+      clearSession();
+    }
+  }
+  showLogin();
 })();
 </script>
 </body>
